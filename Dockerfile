@@ -1,5 +1,6 @@
-# Use the official Ubuntu 22.04 (Jammy Jellyfish) base image
-FROM ubuntu:22.04
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Run package updates and install your required dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,20 +25,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# making the Pangolin library - visualization
-RUN git clone --recursive https://github.com/stevenlovegrove/Pangolin.git \
-    cd Pangolin \
-    mkdir build && cd build \
-    cmake .. \
-    make -j$(nproc) \
-    && sudo make install
+# Build Pangolin (using v0.6 which is highly stable for ORB-SLAM3)
+RUN git clone https://github.com/stevenlovegrove/Pangolin.git /tmp/Pangolin \
+    && cd /tmp/Pangolin \
+    && git checkout v0.6 \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make -j$(nproc) \
+    && make install \
+    && rm -rf /tmp/Pangolin
 
-
-RUN cd ~ \
-    git clone https://github.com/devansh0703/ORB_SLAM3.git ORB_SLAM3 \
-    cd ORB_SLAM3 \
-    chmod +x build.sh \
+# Build ORB-SLAM3
+RUN git clone https://github.com/devansh0703/ORB_SLAM3.git /ORB_SLAM3 \
+    && cd /ORB_SLAM3 \
+    && chmod +x build.sh \
     && ./build.sh
+
+WORKDIR /ORB_SLAM3
+
+# Mount point for data shared between the host and the container
+RUN mkdir -p /ORB_SLAM3/shared_data
 
 # Set the default command to run when the container starts
 CMD ["/bin/bash"]
