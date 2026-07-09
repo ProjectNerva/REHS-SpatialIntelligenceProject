@@ -1,9 +1,10 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Run package updates and install your required dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     build-essential \
     cmake \
     git \
@@ -41,10 +42,10 @@ RUN git clone https://github.com/devansh0703/ORB_SLAM3.git /ORB_SLAM3 \
     && chmod +x build.sh \
     && ./build.sh
 
-WORKDIR /ORB_SLAM3
+# WORKDIR /ORB_SLAM3
 
 # Mount point for data shared between the host and the container
-RUN mkdir -p /ORB_SLAM3/shared_data
+RUN mkdir -p /shared_data
 
 # Set the default command to run when the container starts
 CMD ["/bin/bash"]
