@@ -9,7 +9,12 @@ CONTAINER_NAME="SIP_ORB_SLAM3_CONTAINER"
 echo "========================================="
 echo "       Building the Docker image...      "
 echo "========================================="
-docker build -t $IMAGE_NAME .
+if docker image inspect $IMAGE_NAME > /dev/null 2>&1; then
+    echo "Docker image $IMAGE_NAME already exists. Skipping build."
+else
+    echo "Docker image $IMAGE_NAME does not exist. Building now..."
+    docker build -t $IMAGE_NAME .
+fi
 
 echo "========================================="
 echo "     Cleaning up any old container...    "

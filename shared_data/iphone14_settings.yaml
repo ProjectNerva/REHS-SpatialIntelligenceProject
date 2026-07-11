@@ -1,0 +1,59 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters — iPhone 14 main (wide) camera, 3840x2160 (4K) video, stabilization OFF.
+#
+# THESE ARE APPROXIMATE, NOT MEASURED. fx/fy are derived from a commonly-cited ~65 deg
+# horizontal FOV for the iPhone 14 main camera in video mode (same FOV as 1080p, just
+# scaled 2x for the doubled pixel dimensions of 4K), not a real checkerboard calibration.
+# Good enough to see ORB-SLAM3 run and roughly track; not accurate enough for real
+# trajectory/metric work. See notes below for what breaks this.
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+# Camera calibration parameters (OpenCV pinhole model)
+Camera1.fx: 3020.0
+Camera1.fy: 3020.0
+Camera1.cx: 1920.0
+Camera1.cy: 1080.0
+
+# Distortion. Apple's ISP already applies lens correction to captured video,
+# so 0 is a reasonable starting assumption absent real calibration.
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+
+Camera.width: 3840
+Camera.height: 2160
+
+# Match this to how the clip was actually shot (iPhone default is 30; change to 60 if so)
+Camera.fps: 30
+
+# Color order (0: BGR, 1: RGB). Ignored for grayscale.
+Camera.RGB: 1
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 2500
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 7
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0

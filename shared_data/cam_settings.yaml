@@ -1,0 +1,60 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Generic monocular PinHole settings template.
+#
+# To tailor this to a specific camera, you only need to replace the 11 values
+# marked "<-- CALIBRATE" below (Camera1.fx/fy/cx/cy/k1/k2/p1/p2, Camera.width/
+# height/fps). Everything else is a standard default shared by every pinhole
+# camera and should not need to change.
+#
+# File.version must stay exactly "1.0" -- it's a fixed switch string that
+# tells ORB-SLAM3 to use this key schema (Camera1.fx-style), not a version
+# number to bump.
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+# Camera calibration parameters (OpenCV pinhole model)
+Camera1.fx: 0.0   # <-- CALIBRATE: focal length x (px)
+Camera1.fy: 0.0   # <-- CALIBRATE: focal length y (px)
+
+# center of the camera in pixels (cx, cy) — should be half the width and height of the image
+Camera1.cx: 0.0   # <-- CALIBRATE: usually ~= width / 2
+Camera1.cy: 0.0   # <-- CALIBRATE: usually ~= height / 2
+
+# distortion (0 is a reasonable default if the source already lens-corrects,
+# e.g. phone video ISPs typically do)
+Camera1.k1: 0.0   # <-- CALIBRATE if you have real distortion coefficients
+Camera1.k2: 0.0   # <-- CALIBRATE
+Camera1.p1: 0.0   # <-- CALIBRATE
+Camera1.p2: 0.0   # <-- CALIBRATE
+
+Camera.width: 0    # <-- CALIBRATE: match the video's actual pixel width
+Camera.height: 0   # <-- CALIBRATE: match the video's actual pixel height
+
+# match the fps to the video
+Camera.fps: 30   # <-- CALIBRATE: match the video's actual frame rate
+
+# Color order (0: BGR, 1: RGB). Ignored for grayscale.
+Camera.RGB: 1
+
+# ORB Parameters
+ORBextractor.nFeatures: 1000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+# Viewer Parameters
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
