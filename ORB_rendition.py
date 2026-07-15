@@ -1,14 +1,23 @@
+import sys
+import os
 import open3d as o3d
 import numpy as np
 
+mp = sys.argv[1]
+kft = sys.argv[2]
+
 # load the MapPoints PLY
-map_points = o3d.io.read_point_cloud("shared_data/MapPoints.ply")
-map_points.paint_uniform_color([0.5, 0.5, 0.5]) # gray for the map
+map_points = o3d.io.read_point_cloud(mp)
+if os.path.exists(mp) and os.path.getsize(mp) > 0:
+    map_points.paint_uniform_color([0.5, 0.5, 0.5]) # gray for the map
 
 # load and parse the KeyFrameTrajectory.txt
-traj_data = np.loadtxt("shared_data/KeyFrameTrajectory.txt")
 # extract x, y, z columns (assuming columns 1,2,3)
-traj_points = traj_data[:, 1:4]
+traj_points = np.empty((0, 3))
+if os.path.exists(kft) and os.path.getsize(kft) > 0:
+    # ndmin=2 keeps a single-keyframe file 2-D instead of collapsing to 1-D
+    traj_data = np.loadtxt(kft, ndmin=2)
+    traj_points = traj_data[:, 1:4]
 
 # create a line set for the trajectory
 lines = [[i, i+1] for i in range(len(traj_points) - 1)]
