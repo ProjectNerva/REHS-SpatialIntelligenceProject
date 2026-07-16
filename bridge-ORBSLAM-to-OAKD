@@ -1,0 +1,43 @@
+cat > ~/ORB_SLAM3/Examples/Monocular/mono_oakd.cc << 'EOF'
+#include <iostream>
+#include <chrono>
+#include <opencv2/opencv.hpp>
+#include <depthai/depthai.hpp>
+#include <System.h>
+
+int main(int argc, char **argv)
+{
+    if (argc != 3)
+    {
+        std::cerr << "Usage: ./mono_oakd path_to_vocabulary path_to_settings" << std::endl;
+        return 1;
+    }
+
+    ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::MONOCULAR, true);
+
+    dai::Pipeline pipeline;
+    auto cam = pipeline.create<dai::node::Camera>()->build(dai::CameraBoardSocket::CAM_B);
+    auto *output = cam->requestOutput(std::make_pair(640, 400));
+    auto q = output->createOutputQueue();
+
+    pipeline.start();
+
+    auto t_start = std::chrono::steady_clock::now();
+    std::cout << "Starting live tracking. Press Ctrl+C to stop." << std::endl;
+
+    while (true)
+    {
+        auto imgFrame = q->get<dai::ImgFrame>();
+        cv::Mat im = imgFrame->getCvFrame();
+
+        auto t_now = std::chrono::steady_clock::now();
+        double tframe = std::chrono::duration<double>(t_now - t_start).count();
+
+        SLAM.TrackMonocular(im, tframe);
+    }
+
+    SLAM.Shutdown();
+    SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory_OAKD.txt");
+    return 0;
+}
+EOF
