@@ -3,6 +3,7 @@
 #include <chrono>
 #include <csignal>
 #include <atomic>
+#include <unordered_set>
 #include <opencv2/opencv.hpp>
 #include <depthai/depthai.hpp>
 #include <Eigen/Core>
@@ -85,6 +86,7 @@ int main(int argc, char** argv) {
     // FAST_ACCURACY is compiler-confirmed to exist. Check the full enum on your
     // build machine (grep StereoDepth.hpp) if a denser/higher-quality preset is available.
     stereo->setDefaultProfilePreset(dai::node::StereoDepth::PresetMode::FAST_ACCURACY);
+    stereo->initialConfig->setConfidenceThreshold(200);
     stereo->setRectifyEdgeFillColor(0);
     stereo->setLeftRightCheck(true);
     // Sub-pixel disparity interpolation -- smoother, more accurate depth values
@@ -110,6 +112,19 @@ int main(int argc, char** argv) {
 
     std::cout << "Starting OAK-D stream in HEADLESS mode. Press Ctrl+C to stop tracking and save files." << std::endl;
 
+    // Accumulates every distinct MapPoint ever tracked over the whole run, not just the
+    // current frame. GetTrackedMapPoints() only returns mCurrentFrame.mvpMapPoints (see
+    // NOTE below), so this set is what actually stands in for "the whole reconstructed
+    // map" absent a public Atlas accessor. Inserting a MapPoint* already in the set is a
+    // no-op, so this also IS the "shrink" step: no point is ever written twice regardless
+    // of how many frames re-observe it, bounded by the number of real distinct landmarks.
+    std::unordered_set<ORB_SLAM3::MapPoint*> accumulatedMapPoints;
+    size_t lastCheckpointCount = 0;
+    // System exposes no keyframe counter (mpTracker/mpAtlas are private, same gap as the
+    // GetMap() note below), so new-landmark growth stands in for "N new keyframes": the
+    // local mapping thread only creates new map points when it inserts a new keyframe.
+    const size_t kCheckpointGrowth = 100;
+
     // Main tracking loop governed by the signal handler flag
     while(bContinueRunning && pipeline.isRunning()) {
         auto msgGroup = qSynced->get<dai::MessageGroup>();
@@ -129,6 +144,19 @@ int main(int argc, char** argv) {
 
             // Pass the frame to ORB-SLAM3
             SLAM.TrackRGBD(colorFrame, depthMeters, tframe);
+
+            for(auto* mp : SLAM.GetTrackedMapPoints()) {
+                if(mp && !mp->isBad()) accumulatedMapPoints.insert(mp);
+            }
+
+            // Checkpoint to disk so a hard kill (SIGKILL, crash, power loss -- anything
+            // that skips the SIGINT path below) still leaves a recent MapPoints.ply on
+            // disk instead of nothing at all.
+            if(accumulatedMapPoints.size() >= lastCheckpointCount + kCheckpointGrowth) {
+                std::vector<ORB_SLAM3::MapPoint*> snapshot(accumulatedMapPoints.begin(), accumulatedMapPoints.end());
+                SaveMapPointsToPly(snapshot, "MapPoints.ply");
+                lastCheckpointCount = accumulatedMapPoints.size();
+            }
         }
     }
 
@@ -145,8 +173,9 @@ int main(int argc, char** argv) {
     // Export MapPoints
     // NOTE: System has no public accessor for the full Atlas map (mpAtlas is
     // private, no GetMap()). GetTrackedMapPoints() only returns the points
-    // tracked in the most recently processed frame, not the whole reconstructed map.
-    std::vector<ORB_SLAM3::MapPoint*> vpMapPoints = SLAM.GetTrackedMapPoints();
+    // tracked in the most recently processed frame, not the whole reconstructed map --
+    // accumulatedMapPoints (built up above across the whole run) is used here instead.
+    std::vector<ORB_SLAM3::MapPoint*> vpMapPoints(accumulatedMapPoints.begin(), accumulatedMapPoints.end());
     SaveMapPointsToPly(vpMapPoints, "MapPoints.ply");
 
     std::cout << "Exiting program smoothly." << std::endl;

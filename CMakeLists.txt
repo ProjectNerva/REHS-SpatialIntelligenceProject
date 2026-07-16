@@ -15,6 +15,7 @@ set(ORB_SLAM3_DIR /ORB_SLAM3)
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
+find_package(depthai CONFIG REQUIRED)
 
 include_directories(
     ${ORB_SLAM3_DIR}
@@ -26,9 +27,8 @@ include_directories(
     ${Pangolin_INCLUDE_DIRS}
 )
 
-add_executable(orb_slam3_test orb_slam3.cpp)
-
-target_link_libraries(orb_slam3_test
+# Common ORB-SLAM3 link set shared by every executable in this project.
+set(ORB_SLAM3_LIBS
     ${ORB_SLAM3_DIR}/lib/libORB_SLAM3.so
     ${ORB_SLAM3_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
     ${ORB_SLAM3_DIR}/Thirdparty/g2o/lib/libg2o.so
@@ -38,3 +38,6 @@ target_link_libraries(orb_slam3_test
     -lboost_serialization
     -lcrypto
 )
+
+add_executable(SLAM IMUS_OD.cpp)
+target_link_libraries(SLAM ${ORB_SLAM3_LIBS} depthai::core)
