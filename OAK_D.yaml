@@ -1,28 +1,5 @@
 %YAML:1.0
 
-#--------------------------------------------------------------------------------------------
-# Stereo-Inertial settings for the OAK-D Pro W (Wide), used by IMUS_OD.cpp
-# (ORB_SLAM3::System::IMU_STEREO).
-#
-# Camera1/Camera2 below are the two MONO cameras (CAM_B/CAM_C, sensor OV9282), fed to
-# TrackStereo() as raw, unrectified left/right frames -- IMUS_OD.cpp never calls a rectify
-# step, so ORB-SLAM3 needs both cameras' full intrinsics/distortion plus the extrinsic
-# transform between them (Stereo.T_c1_c2) to rectify internally. This is a different set of
-# keys than OAK_D_RGBD.yaml, which only needed a scalar Stereo.b baseline because RGBD mode
-# gets a pre-computed depth map, not two raw images.
-#
-# All Camera1/Camera2/Stereo/IMU numeric values below are pulled directly from a real
-# on-device EEPROM calibration dump (pasted into chat), not placeholders.
-#
-# <-- CALIBRATE MISMATCH: this calibration was captured at 1280x720 (see "Resolution used
-# for intrinsics" in the dump), but IMUS_OD.cpp currently requests 1280x800 from both
-# cameras (camLeft/camRight ->build(...) and ->requestOutput(...)). cy for both cameras
-# (349.828 / 344.305) is centered for a 720px-tall image, not 800px -- using this file
-# as-is against 800p frames will misproject every point. Camera.width/height below are set
-# to 720 to match the calibration; IMUS_OD.cpp's requested resolution needs to change to
-# 1280x720 to match, not the other way around, since these intrinsics are what's actually
-# measured for this physical rig.
-#--------------------------------------------------------------------------------------------
 File.version: "1.0"
 
 # Confirmed via the calibration dump: distortion model -> Perspective for both CAM_B and
@@ -55,12 +32,10 @@ Camera2.p1: -0.000167
 Camera2.p2: -0.000413
 Camera2.k3: -0.007582
 
-# Resolution the intrinsics above were measured at -- see CALIBRATE MISMATCH note above.
 Camera.width: 1280
 Camera.height: 720
-Camera.fps: 30   # matches kCameraFps in IMUS_OD.cpp -- keep these in sync if either changes
+Camera.fps: 15
 
-# Color order (0: BGR, 1: RGB). No-op for grayscale mono frames either way.
 Camera.RGB: 0
 
 #--------------------------------------------------------------------------------------------
@@ -107,14 +82,12 @@ IMU.NoiseGyro: 0.480640
 IMU.NoiseAcc: 0.076217
 IMU.GyroWalk: 0.069441
 IMU.AccWalk: 0.000061
-IMU.Frequency: 300.0   # matches kIMUHz in IMUS_OD.cpp -- keep these in sync if either changes. Must have a
-                        # decimal point: OpenCV's YAML parser types a bare "300" as an int node, and this
-                        # fork's Settings.cc requires a real/float node here ("must be a real number").
+IMU.Frequency: 150.0
 
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
-ORBextractor.nFeatures: 2000
+ORBextractor.nFeatures: 1000
 ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 8
 ORBextractor.iniThFAST: 20

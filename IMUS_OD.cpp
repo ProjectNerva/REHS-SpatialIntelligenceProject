@@ -1,8 +1,8 @@
 #include <iostream>
 #include <fstream>
+#include <iomanip>
+#include <chrono>
 #include <thread>
-#include <csignal>
-#include <atomic>
 
 #include <depthai/depthai.hpp>
 #include <opencv2/opencv.hpp>
@@ -12,17 +12,6 @@
 #include "System.h"
 #include "ImuTypes.h"
 #include "MapPoint.h"
-
-// Global atomic flag to control the main loop execution
-std::atomic<bool> bContinueRunning(true);
-
-// Signal handler function for Ctrl+C (SIGINT) -- lets the loop reach pipeline.stop() and
-// SLAM.Shutdown() on exit instead of an abrupt kill, which is what left the OAK-D device
-// connection stuck and caused X_LINK_DEVICE_ALREADY_IN_USE on the next run.
-void SignalHandler(int signum) {
-    std::cout << "\n[Signal Handler] Interrupt signal (" << signum << ") received. Shuting down gracefully..." << std::endl;
-    bContinueRunning = false;
-}
 
 // Exports MapPoints to a .ply file for rendering -- same implementation as OAKD.cpp's, since
 // GetTrackedMapPoints() returns a per-keypoint array (mCurrentFrame.mvpMapPoints) sized by
@@ -58,27 +47,19 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // Register the signal handler for Ctrl+C
-    std::signal(SIGINT, SignalHandler);
-
     // params
     // the params here are for syncing the data
-    constexpr float kCameraFps = 30.0f;
-    constexpr float kIMUHz =300.0f; // always 10x camera fps, this makes the two streams comparable in rate
+    constexpr float kCameraFps = 15.0f;
+    constexpr float kIMUHz =150.0f; // always 10x camera fps, this makes the two streams comparable in rate
 
     dai::Pipeline pipeline;
-    ORB_SLAM3::System SLAM("/ORB_SLAM3/Vocabulary/ORBvoc.txt", argv[1], ORB_SLAM3::System::IMU_STEREO, true);
+    ORB_SLAM3::System SLAM("/ORB_SLAM3/Vocabulary/ORBvoc.txt", argv[1], ORB_SLAM3::System::IMU_STEREO, false);
 
     // creating the nodes and wiring it up
     auto camLeft  = pipeline.create<dai::node::Camera>();
     auto camRight = pipeline.create<dai::node::Camera>();
 
     // resolution
-    // All the possible options are: <-- this is DepthAIv2, but ____
-    // THE_800_P | 1280 x 800
-    // THE_720_P | 1280 x 720
-    // THE_400_P | 640  x 400
-    // THE_480_P | 640  x 480
     camLeft->build(dai::CameraBoardSocket::CAM_B, std::make_pair(1280u, 720u), kCameraFps);
     camRight->build(dai::CameraBoardSocket::CAM_C, std::make_pair(1280u, 720u), kCameraFps);
 
@@ -112,12 +93,14 @@ int main(int argc, char** argv) {
 
     // starting the pipeline
     pipeline.start();
-    
-    std::cout << "Starting OAK-D stream in HEADLESS mode. Press Ctrl+C to stop tracking and save files." << std::endl;
 
-    // main logic loop governed by the signal handler flag
+    std::cout << "Starting OAK-D stream in HEADLESS mode." << std::endl; // eventually add the ctrl+c signal control and then termination
+
+    // main logic loop
     std::vector<ORB_SLAM3::IMU::Point> imuBuffer;
-    while(bContinueRunning && pipeline.isRunning()) {
+    double lastTframe = -1.0; // TEMP DEBUG: previous frame's capture timestamp, to spot stalls
+
+    while(pipeline.isRunning()) {
         // Drain every IMU packet available right now without blocking on it, so the buffer
         // never falls behind while we wait for the next stereo frame pair below.
         while(auto imuData = imuQueue->tryGet<dai::IMUData>()) {
@@ -135,6 +118,13 @@ int main(int argc, char** argv) {
 
         double tframe = std::chrono::duration<double>(inLeft->getTimestamp().time_since_epoch()).count();
 
+        // TEMP DEBUG: capture-to-capture gap -- confirms/denies whether frame delivery is
+        // stalling in real time (expect ~33ms at 30fps; anything much larger is a stall).
+        double frameDeltaMs = (lastTframe >= 0.0) ? (tframe - lastTframe) * 1000.0 : 0.0;
+        lastTframe = tframe;
+
+        size_t imuBufBefore = imuBuffer.size();
+
         // Hand ORB-SLAM3 every buffered sample up to this frame's timestamp, then drop only
         // the samples actually consumed -- anything newer stays buffered for the next frame.
         auto splitPoint = imuBuffer.begin();
@@ -142,7 +132,28 @@ int main(int argc, char** argv) {
         std::vector<ORB_SLAM3::IMU::Point> vImuMeas(imuBuffer.begin(), splitPoint);
         imuBuffer.erase(imuBuffer.begin(), splitPoint);
 
+        // TEMP DEBUG: one consolidated line per frame -- capture gap, buffer occupancy before
+        // and after bucketing, and how many samples actually got handed to TrackStereo.
+        std::cout << std::fixed << std::setprecision(3)
+                  << "[DEBUG] tframe=" << tframe
+                  << " frameDelta=" << frameDeltaMs << "ms"
+                  << " imuBufBefore=" << imuBufBefore
+                  << " vImuMeas=" << vImuMeas.size()
+                  << " imuBufAfter=" << imuBuffer.size()
+                  << std::endl;
+
+        if (vImuMeas.empty() && SLAM.GetTrackingState() != ORB_SLAM3::Tracking::SYSTEM_NOT_READY) {
+            std::cout << "[DEBUG] SKIP: TrackStereo not called (empty vImuMeas)" << std::endl;
+            continue;
+        }
+
+        // TEMP DEBUG: wall-clock cost of TrackStereo itself -- confirms/denies whether the
+        // RPi5 is CPU-bound on tracking (expect well under 33ms/frame to keep up with 30fps).
+        auto trackStart = std::chrono::steady_clock::now();
         SLAM.TrackStereo(inLeft->getCvFrame(), inRight->getCvFrame(), tframe, vImuMeas);
+        auto trackEnd = std::chrono::steady_clock::now();
+        double trackMs = std::chrono::duration<double, std::milli>(trackEnd - trackStart).count();
+        std::cout << "[DEBUG] TrackStereo took " << trackMs << "ms" << std::endl;
 
         // Tracking loss (fast motion, occlusion, entering an unmapped area) is handled
         // inside TrackStereo: ORB-SLAM3 attempts relocalization first.
