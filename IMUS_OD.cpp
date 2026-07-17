@@ -79,11 +79,11 @@ int main(int argc, char** argv) {
     // THE_720_P | 1280 x 720
     // THE_400_P | 640  x 400
     // THE_480_P | 640  x 480
-    camLeft->build(dai::CameraBoardSocket::CAM_B, std::make_pair(1280u, 800u), kCameraFps);
-    camRight->build(dai::CameraBoardSocket::CAM_C, std::make_pair(1280u, 800u), kCameraFps);
+    camLeft->build(dai::CameraBoardSocket::CAM_B, std::make_pair(1280u, 720u), kCameraFps);
+    camRight->build(dai::CameraBoardSocket::CAM_C, std::make_pair(1280u, 720u), kCameraFps);
 
-    auto* leftOut = camLeft->requestOutput(std::make_pair(1280u, 800u));
-    auto* rightOut = camRight->requestOutput(std::make_pair(1280u, 800u));
+    auto* leftOut = camLeft->requestOutput(std::make_pair(1280u, 720u));
+    auto* rightOut = camRight->requestOutput(std::make_pair(1280u, 720u));
 
     // wire the imu
     auto imu = pipeline.create<dai::node::IMU>();
