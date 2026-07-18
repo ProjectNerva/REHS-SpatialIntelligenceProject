@@ -72,7 +72,9 @@ int main(int argc, char** argv) {
     // ({Data Types}, Hz rate)
     imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_CALIBRATED, dai::IMUSensor::GYROSCOPE_CALIBRATED}, static_cast<uint32_t>(kIMUHz));
     // above this threshold packets will be sent in batch of X, if the host is not blocked and USB bandwidth is available
-    imu->setBatchReportThreshold(1);
+    // raised from 1 -- since IMU samples are buffered and consumed in bulk anyway (see main loop),
+    // there's no benefit to a per-sample USB transfer; batching cuts host/device transfer overhead
+    imu->setBatchReportThreshold(5);
     // maximum number of IMU packets in a batch, if it's reached device will block sending until host can receive it
     // if lower or equal to batchReportThreshold then the sending is always blocking on device
     // useful to reduce device's CPU load  and number of lost packets, if CPU load is high on device side due to multiple nodes

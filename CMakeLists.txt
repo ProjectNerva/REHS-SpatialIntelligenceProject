@@ -8,6 +8,12 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# RPi5 is Cortex-A76 (BCM2712) -- target it explicitly so GCC emits NEON/SIMD
+# codegen instead of a generic armv8-a baseline.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(-O3 -mcpu=cortex-a76 -mtune=cortex-a76)
+endif()
+
 # ORB-SLAM3 was cloned to /ORB_SLAM3 at container root (see Dockerfile),
 # NOT under this shared_data mount.
 set(ORB_SLAM3_DIR /ORB_SLAM3)
@@ -39,5 +45,5 @@ set(ORB_SLAM3_LIBS
     -lcrypto
 )
 
-add_executable(SLAM IMUS_OD.cpp)
+add_executable(SLAM SIMU_OAKD.cpp)
 target_link_libraries(SLAM ${ORB_SLAM3_LIBS} depthai::core)
