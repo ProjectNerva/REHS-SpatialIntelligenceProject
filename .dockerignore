@@ -1,0 +1,16 @@
+# The Dockerfile never COPY/ADDs anything from this repo -- ORB-SLAM3,
+# Pangolin, and depthai-core are all git-cloned from GitHub during the build,
+# and every project file reaches the container purely via the runtime `-v`
+# mounts in automation.sh, never via the build context. So none of this
+# actually affects the build itself -- but keep only workspace/ (the files
+# actually used inside the container: workspace/CMakeLists.txt,
+# workspace/IMUS_OD_DB.cpp, workspace/datasets/) and patches/ (applied to the
+# cloned ORB-SLAM3 fork during the build -- see Dockerfile) un-ignored, in
+# case a COPY is ever added later, or something else in the toolchain reads
+# the context.
+*
+!workspace
+!workspace/**
+!patches
+!patches/**
+x       

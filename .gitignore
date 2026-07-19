@@ -4,3 +4,8 @@ shared_data/video/
 shared_data/*.txt
 !shared_data/CMakeLists.txt
 shared_data/*.ply
+*.code-workspace
+datasets/*
+workspace/build/
+patches/
+workspace/datasets

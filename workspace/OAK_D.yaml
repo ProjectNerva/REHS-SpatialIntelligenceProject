@@ -1,0 +1,114 @@
+%YAML:1.0
+
+File.version: "1.0"
+
+# Confirmed via the calibration dump: distortion model -> Perspective for both CAM_B and
+# CAM_C, so PinHole is correct.
+Camera.type: "PinHole"
+
+# NOTE ON RESOLUTION: IMUS_OD.cpp now captures 640x360 (was 1280x720). The original
+# calibration was done at 1280x720, so fx/fy/cx/cy below are the calibrated values
+# SCALED BY 0.5 (a uniform half-resolution downscale scales focal length and principal
+# point linearly). Distortion coefficients (k1,k2,p1,p2,k3) are in normalized image
+# coordinates -> dimensionless -> UNCHANGED by rescaling. Original 1280x720 values are
+# kept in comments so this can be reverted or re-derived if the capture resolution changes.
+#--------------------------------------------------------------------------------------------
+# Camera1 = left mono camera (CAM_B / OV9282)
+#--------------------------------------------------------------------------------------------
+Camera1.fx: 285.8325   # was 571.665 @1280x720
+Camera1.fy: 285.8325   # was 571.665
+Camera1.cx: 325.7705   # was 651.541
+Camera1.cy: 174.914    # was 349.828
+Camera1.k1: 0.531890
+Camera1.k2: -0.172360
+Camera1.p1: 0.000178
+Camera1.p2: -0.000454
+Camera1.k3: -0.013387
+
+#--------------------------------------------------------------------------------------------
+# Camera2 = right mono camera (CAM_C / OV9282)
+#--------------------------------------------------------------------------------------------
+Camera2.fx: 288.6715   # was 577.343 @1280x720
+Camera2.fy: 288.6715   # was 577.343
+Camera2.cx: 332.888    # was 665.776
+Camera2.cy: 172.1525   # was 344.305
+Camera2.k1: 1.365720
+Camera2.k2: 0.136647
+Camera2.p1: -0.000167
+Camera2.p2: -0.000413
+Camera2.k3: -0.007582
+
+Camera.width: 640    # was 1280 -- matches IMUS_OD.cpp camLeft/camRight build(640,360)
+Camera.height: 360   # was 720
+Camera.fps: 15
+
+Camera.RGB: 0
+
+#--------------------------------------------------------------------------------------------
+# Stereo.T_c1_c2: transform from Camera1 (CAM_B) to Camera2 (CAM_C), straight from the
+# "Stereo extrinsics: CAM_B -> CAM_C" block in the calibration dump. Translation is in
+# meters; the -0.074967 in the top-right matches the ~7.5cm physical baseline already used
+# in OAK_D_RGBD.yaml's Stereo.b.
+#--------------------------------------------------------------------------------------------
+Stereo.T_c1_c2: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: f
+   data: [0.999811, -0.006206, -0.018424, -0.074967,
+          0.006169, 0.999979, -0.002070, -0.000177,
+          0.018436, 0.001956, 0.999828, -0.000411,
+          0.000000, 0.000000, 0.000000, 1.000000]
+
+Stereo.ThDepth: 40.0   # <-- CALIBRATE / tune: generic ORB-SLAM3 example default, not a measured value for this rig
+
+#--------------------------------------------------------------------------------------------
+# IMU.T_b_c1: transform from Camera1 (CAM_B) to body/IMU frame. Using the calibration dump's
+# "getCameraToImuExtrinsics" matrix -- the dump itself notes this is the one to try first for
+# this key; getImuToCameraExtrinsics (the inverse direction) is the fallback if tracking
+# doesn't converge well with this one.
+#--------------------------------------------------------------------------------------------
+IMU.T_b_c1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: f
+   data: [0.999945, -0.009564, 0.004336, 0.000836,
+          -0.009582, -0.999945, 0.004278, -0.000709,
+          0.004295, -0.004319, -0.999981, -0.000055,
+          0.000000, 0.000000, 0.000000, 1.000000]
+
+# Insert keyframes even while tracking is lost -- stock ORB-SLAM3 stereo-inertial example
+# default, keeps IMU preintegration continuous across brief tracking gaps rather than
+# breaking the chain. Not a measured value, just the standard convention.
+IMU.InsertKFsWhenLost: 1
+
+# Noise parameters, averaged across x/y/z from the factory Allan-variance calibration in the
+# dump (ORB-SLAM3's IMU noise model is scalar, not per-axis, so per-axis values from the dump
+# are averaged here rather than picking one axis arbitrarily).
+IMU.NoiseGyro: 0.480640
+IMU.NoiseAcc: 0.076217
+IMU.GyroWalk: 0.069441
+IMU.AccWalk: 0.000061
+IMU.Frequency: 150.0
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 6 
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
