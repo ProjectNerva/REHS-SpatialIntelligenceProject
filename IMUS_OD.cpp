@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <chrono>
 #include <thread>
+#include <cmath>
 
 #include <depthai/depthai.hpp>
 #include <opencv2/opencv.hpp>
@@ -52,6 +53,11 @@ int main(int argc, char** argv) {
     constexpr float kCameraFps = 15.0f;
     constexpr float kIMUHz =150.0f; // always 10x camera fps, this makes the two streams comparable in rate
 
+    // init gate: hold-still window for bias/gravity, then require motion for scale (see TECHNICAL.md)
+    constexpr double kHoldStillSec = 2.0;
+    constexpr double kGyroRmsMin = 0.05;   // rad/s
+    constexpr double kAccelStdMin = 0.3;   // m/s^2
+
     dai::Pipeline pipeline;
     ORB_SLAM3::System SLAM("/ORB_SLAM3/Vocabulary/ORBvoc.txt", argv[1], ORB_SLAM3::System::IMU_STEREO, false);
 
@@ -60,11 +66,11 @@ int main(int argc, char** argv) {
     auto camRight = pipeline.create<dai::node::Camera>();
 
     // resolution
-    camLeft->build(dai::CameraBoardSocket::CAM_B, std::make_pair(1280u, 720u), kCameraFps);
-    camRight->build(dai::CameraBoardSocket::CAM_C, std::make_pair(1280u, 720u), kCameraFps);
+    camLeft->build(dai::CameraBoardSocket::CAM_B, std::make_pair(640u, 360u), kCameraFps);
+    camRight->build(dai::CameraBoardSocket::CAM_C, std::make_pair(640u, 360u), kCameraFps);
 
-    auto* leftOut = camLeft->requestOutput(std::make_pair(1280u, 720u));
-    auto* rightOut = camRight->requestOutput(std::make_pair(1280u, 720u));
+    auto* leftOut = camLeft->requestOutput(std::make_pair(640u, 360u));
+    auto* rightOut = camRight->requestOutput(std::make_pair(640u, 360u));
 
     // wire the imu
     auto imu = pipeline.create<dai::node::IMU>();
@@ -101,6 +107,8 @@ int main(int argc, char** argv) {
     // main logic loop
     std::vector<ORB_SLAM3::IMU::Point> imuBuffer;
     double lastTframe = -1.0; // TEMP DEBUG: previous frame's capture timestamp, to spot stalls
+    auto wallStart = std::chrono::steady_clock::now();
+    bool motionConfirmed = false;
 
     while(pipeline.isRunning()) {
         // Drain every IMU packet available right now without blocking on it, so the buffer
@@ -133,6 +141,30 @@ int main(int argc, char** argv) {
         while(splitPoint != imuBuffer.end() && splitPoint->t <= tframe) ++splitPoint;
         std::vector<ORB_SLAM3::IMU::Point> vImuMeas(imuBuffer.begin(), splitPoint);
         imuBuffer.erase(imuBuffer.begin(), splitPoint);
+
+        // init gate: guidance only, never blocks TrackStereo (see TECHNICAL.md)
+        double elapsedSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - wallStart).count();
+        if(!motionConfirmed && !vImuMeas.empty()) {
+            double gyroSqSum = 0, accelSum = 0, accelSqSum = 0;
+            for(const auto& p : vImuMeas) {
+                gyroSqSum += p.w.squaredNorm();
+                double an = p.a.norm();
+                accelSum += an; accelSqSum += an * an;
+            }
+            size_t n = vImuMeas.size();
+            double gyroRms = std::sqrt(gyroSqSum / n);
+            double accelMean = accelSum / n;
+            double accelVar = accelSqSum / n - accelMean * accelMean;
+            double accelStd = std::sqrt(accelVar > 0 ? accelVar : 0.0);
+            if(gyroRms >= kGyroRmsMin || accelStd >= kAccelStdMin) {
+                motionConfirmed = true;
+                std::cout << "[GATE] motion confirmed" << std::endl;
+            } else if(elapsedSec < kHoldStillSec) {
+                std::cout << "[GATE] hold still -- " << (kHoldStillSec - elapsedSec) << "s" << std::endl;
+            } else {
+                std::cout << "[GATE] move the camera now" << std::endl;
+            }
+        }
 
         // TEMP DEBUG: one consolidated line per frame -- capture gap, buffer occupancy before
         // and after bucketing, and how many samples actually got handed to TrackStereo.
