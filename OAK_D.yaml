@@ -40,7 +40,7 @@ Camera2.k3: -0.007582
 
 Camera.width: 640    # was 1280 -- matches IMUS_OD.cpp camLeft/camRight build(640,360)
 Camera.height: 360   # was 720
-Camera.fps: 15
+Camera.fps: 30
 
 Camera.RGB: 0
 
@@ -93,7 +93,7 @@ IMU.Frequency: 150.0
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
-ORBextractor.nFeatures: 1000
+ORBextractor.nFeatures: 2000
 ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 6 
 ORBextractor.iniThFAST: 20
