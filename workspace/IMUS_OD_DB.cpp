@@ -57,21 +57,33 @@ void SaveMapPointsToPly(const std::vector<ORB_SLAM3::MapPoint*>& vpMapPoints, co
     std::cout << "Done saving." << std::endl;
 }
 
-// Reads <runDir>/timestamps.txt (one timestamp string per line, nanoseconds). Kept as strings,
-// not parsed to numbers here, so the exact text can be reused to build "<ts>.png" image paths
-// without floating-point round-tripping changing a digit.
+// Reads timestamps for a run. Tries <runDir>/timestamps.txt first (one timestamp string per
+// line, nanoseconds -- what this project's own recorder produces). Falls back to
+// <runDir>/mav0/cam0/data.csv ("#timestamp [ns],filename" rows) if that file isn't present
 bool LoadTimestamps(const std::string& runDir, std::vector<std::string>& vTimestamps) {
     std::ifstream f(runDir + "/timestamps.txt");
-    if(!f.is_open()) {
-        std::cerr << "[ERROR] Could not open " << runDir << "/timestamps.txt" << std::endl;
-        return false;
-    }
-    std::string line;
-    while(std::getline(f, line)) {
-        if(!line.empty()) vTimestamps.push_back(line);
+    if(f.is_open()) {
+        std::string line;
+        while(std::getline(f, line)) {
+            if(!line.empty()) vTimestamps.push_back(line);
+        }
+    } else {
+        std::ifstream csv(runDir + "/mav0/cam0/data.csv");
+        if(!csv.is_open()) {
+            std::cerr << "[ERROR] Could not open " << runDir << "/timestamps.txt or "
+                      << runDir << "/mav0/cam0/data.csv" << std::endl;
+            return false;
+        }
+        std::string line;
+        while(std::getline(csv, line)) {
+            if(line.empty() || line[0] == '#') continue;
+            size_t commaPos = line.find(',');
+            if(commaPos == std::string::npos) continue;
+            vTimestamps.push_back(line.substr(0, commaPos));
+        }
     }
     if(vTimestamps.empty()) {
-        std::cerr << "[ERROR] " << runDir << "/timestamps.txt is empty" << std::endl;
+        std::cerr << "[ERROR] " << runDir << ": no timestamps found in timestamps.txt or mav0/cam0/data.csv" << std::endl;
         return false;
     }
     return true;

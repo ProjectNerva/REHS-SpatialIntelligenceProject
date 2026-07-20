@@ -6,12 +6,6 @@ File.version: "1.0"
 # CAM_C, so PinHole is correct.
 Camera.type: "PinHole"
 
-# NOTE ON RESOLUTION: IMUS_OD.cpp now captures 640x360 (was 1280x720). The original
-# calibration was done at 1280x720, so fx/fy/cx/cy below are the calibrated values
-# SCALED BY 0.5 (a uniform half-resolution downscale scales focal length and principal
-# point linearly). Distortion coefficients (k1,k2,p1,p2,k3) are in normalized image
-# coordinates -> dimensionless -> UNCHANGED by rescaling. Original 1280x720 values are
-# kept in comments so this can be reverted or re-derived if the capture resolution changes.
 #--------------------------------------------------------------------------------------------
 # Camera1 = left mono camera (CAM_B / OV9282)
 #--------------------------------------------------------------------------------------------
@@ -40,7 +34,7 @@ Camera2.k3: -0.007582
 
 Camera.width: 640    # was 1280 -- matches IMUS_OD.cpp camLeft/camRight build(640,360)
 Camera.height: 360   # was 720
-Camera.fps: 15
+Camera.fps: 30
 
 Camera.RGB: 0
 
@@ -88,12 +82,12 @@ IMU.NoiseGyro: 0.480640
 IMU.NoiseAcc: 0.076217
 IMU.GyroWalk: 0.069441
 IMU.AccWalk: 0.000061
-IMU.Frequency: 150.0
+IMU.Frequency: 300.0
 
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
-ORBextractor.nFeatures: 1000
+ORBextractor.nFeatures: 2000
 ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 6 
 ORBextractor.iniThFAST: 20

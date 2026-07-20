@@ -4,6 +4,8 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
+#include <csignal>
+#include <atomic>
 
 #include <depthai/depthai.hpp>
 #include <opencv2/opencv.hpp>
@@ -14,10 +16,21 @@
 #include "ImuTypes.h"
 #include "MapPoint.h"
 
-// Exports MapPoints to a .ply file for rendering -- same implementation as OAKD.cpp's, since
-// GetTrackedMapPoints() returns a per-keypoint array (mCurrentFrame.mvpMapPoints) sized by
-// ORBextractor.nFeatures, with nullptr for keypoints that never matched a 3D map point, and
-// GetWorldPos() returns Eigen::Vector3f in this fork, not cv::Mat.
+// Ctrl+C is the only way to stop a live capture session -- without this, the only way the
+// main loop ever exits is the pipeline dying on its own (camera disconnect/crash), in which
+// case Shutdown()/export never run either.
+std::atomic<bool> bContinueRunning(true);
+
+void SignalHandler(int signum) {
+    std::cout << "\n[Signal Handler] Interrupt signal (" << signum << ") received. Shutting down gracefully..." << std::endl;
+    bContinueRunning = false;
+}
+
+// Exports MapPoints to a .ply file for rendering. GetWorldPos() returns Eigen::Vector3f in this
+// fork, not cv::Mat. Points come from System::GetAllMapPoints() (added upstream in
+// ProjectNerva/ORB_SLAM3 commit 30db3fc), which aggregates every map ever created during the
+// run via Atlas::GetAllMapPoints() -- unlike GetTrackedMapPoints(), which only returns the last
+// processed frame's matched keypoints.
 void SaveMapPointsToPly(const std::vector<ORB_SLAM3::MapPoint*>& vpMapPoints, const std::string& filename) {
     std::cout << "Saving " << vpMapPoints.size() << " mappoints to " << filename << "..." << std::endl;
 
@@ -50,8 +63,8 @@ int main(int argc, char** argv) {
 
     // params
     // the params here are for syncing the data
-    constexpr float kCameraFps = 15.0f;
-    constexpr float kIMUHz =150.0f; // always 10x camera fps, this makes the two streams comparable in rate
+    constexpr float kCameraFps = 30.0f;
+    constexpr float kIMUHz =300.0f; // always 10x camera fps, this makes the two streams comparable in rate
 
     // init gate: hold-still window for bias/gravity, then require motion for scale (see TECHNICAL.md)
     constexpr double kHoldStillSec = 2.0;
@@ -78,8 +91,7 @@ int main(int argc, char** argv) {
     // ({Data Types}, Hz rate)
     imu->enableIMUSensor({dai::IMUSensor::ACCELEROMETER_CALIBRATED, dai::IMUSensor::GYROSCOPE_CALIBRATED}, static_cast<uint32_t>(kIMUHz));
     // above this threshold packets will be sent in batch of X, if the host is not blocked and USB bandwidth is available
-    // raised from 1 -- since IMU samples are buffered and consumed in bulk anyway (see main loop),
-    // there's no benefit to a per-sample USB transfer; batching cuts host/device transfer overhead
+    // batching cuts host/device transfer overhead
     imu->setBatchReportThreshold(5);
     // maximum number of IMU packets in a batch, if it's reached device will block sending until host can receive it
     // if lower or equal to batchReportThreshold then the sending is always blocking on device
@@ -102,7 +114,8 @@ int main(int argc, char** argv) {
     // starting the pipeline
     pipeline.start();
 
-    std::cout << "Starting OAK-D stream in HEADLESS mode." << std::endl; // eventually add the ctrl+c signal control and then termination
+    std::signal(SIGINT, SignalHandler);
+    std::cout << "Starting OAK-D stream in HEADLESS mode. Press Ctrl+C to stop and save." << std::endl;
 
     // main logic loop
     std::vector<ORB_SLAM3::IMU::Point> imuBuffer;
@@ -110,7 +123,7 @@ int main(int argc, char** argv) {
     auto wallStart = std::chrono::steady_clock::now();
     bool motionConfirmed = false;
 
-    while(pipeline.isRunning()) {
+    while(pipeline.isRunning() && bContinueRunning) {
         // Drain every IMU packet available right now without blocking on it, so the buffer
         // never falls behind while we wait for the next stereo frame pair below.
         while(auto imuData = imuQueue->tryGet<dai::IMUData>()) {
@@ -200,12 +213,13 @@ int main(int argc, char** argv) {
     // termination
     std::cout << "Finalizing SLAM state..." << std::endl;
     pipeline.stop();
+    SLAM.Shutdown();
 
     // map points exports
     std::cout << "Saving KeyFrame trajectory..." << std::endl;
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 
-    std::vector<ORB_SLAM3::MapPoint*> vpMapPoints = SLAM.GetTrackedMapPoints();
+    std::vector<ORB_SLAM3::MapPoint*> vpMapPoints = SLAM.GetAllMapPoints();
     SaveMapPointsToPly(vpMapPoints, "MapPoints.ply");
 
     std:: cout << "Exitting Program" << std::endl;
