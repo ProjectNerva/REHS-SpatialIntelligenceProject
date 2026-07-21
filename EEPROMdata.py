@@ -27,18 +27,30 @@ with dai.Device() as device, open(output_file, 'w') as f:
     emit("Left Camera Intrinsics (Matrix):\n", np.array(left_intrinsics))
     emit(f"Left fx: {left_intrinsics[0][0]}, cx: {left_intrinsics[0][2]}")
 
-    # stereo extrinsics (T_c1_c2: Transformation Right -> Left)
-    # returns a 4x4 Transformation Matrix [R | T]
-    T_c1_c2 = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_C, dai.CameraBoardSocket.CAM_B)
-    emit("\nStereo T_c1_c2 Extrinsics:\n", np.array(T_c1_c2))
+    emit("\nRight Camera Intrinsics (Matrix):\n", np.array(right_intrinsics))
+    emit(f"Right fx: {right_intrinsics[0][0]}, cx: {right_intrinsics[0][2]}")
 
-    # IMU Extrinsics (IMU_T_b_c1: Transformation IMU -> Left Camera)
+    # Stereo extrinsics -- direction is ambiguous from DepthAI's docstring alone, so emit BOTH
+    # and compare against the known-working OAK_D.yaml (whose Stereo.T_c1_c2 comment claims
+    # "CAM_B -> CAM_C", i.e. left -> right) to determine which call actually matches which label.
+    T_b_to_c = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C)
+    T_c_to_b = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_C, dai.CameraBoardSocket.CAM_B)
+    emit("\nStereo Extrinsics getCameraExtrinsics(CAM_B, CAM_C) [candidate for T_c1_c2, left->right]:\n", np.array(T_b_to_c))
+    emit("\nStereo Extrinsics getCameraExtrinsics(CAM_C, CAM_B) [alternate direction, right->left]:\n", np.array(T_c_to_b))
+
+    # IMU extrinsics -- same direction ambiguity. The working OAK_D.yaml's IMU.T_b_c1 comment
+    # says it came from getCameraToImuExtrinsics(CAM_B); emit both so that can be verified/redone.
     try:
-        # returns 4x4 matrix from IMU to Left Camera (CAM_B)
-        IMU_T_b_c1 = calib_data.getImuToCameraExtrinsics(dai.CameraBoardSocket.CAM_B)
-        emit("\nIMU IMU_T_b_c1 Extrinsics:\n", np.array(IMU_T_b_c1))
+        cam_to_imu = calib_data.getCameraToImuExtrinsics(dai.CameraBoardSocket.CAM_B)
+        emit("\nIMU Extrinsics getCameraToImuExtrinsics(CAM_B) [candidate for IMU.T_b_c1, camera->body]:\n", np.array(cam_to_imu))
     except Exception as e:
-        emit("\nCould not read IMU Extrinsics. Ensure your OAK-D model has an onboard IMU.")
+        emit(f"\nCould not read getCameraToImuExtrinsics: {e}")
+
+    try:
+        imu_to_cam = calib_data.getImuToCameraExtrinsics(dai.CameraBoardSocket.CAM_B)
+        emit("\nIMU Extrinsics getImuToCameraExtrinsics(CAM_B) [alternate direction, body->camera]:\n", np.array(imu_to_cam))
+    except Exception as e:
+        emit(f"\nCould not read getImuToCameraExtrinsics: {e}")
 
     # Distortion coefficients for Left (CAM_B) and Right (CAM_C)
     # Perspective model order: [k1, k2, p1, p2, k3, k4, k5, k6, s1, s2, s3, s4, taux, tauy]

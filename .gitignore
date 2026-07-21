@@ -7,5 +7,4 @@ shared_data/*.ply
 *.code-workspace
 datasets/*
 workspace/build/
-patches/
 workspace/datasets

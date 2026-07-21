@@ -16,9 +16,6 @@
 #include "ImuTypes.h"
 #include "MapPoint.h"
 
-// Ctrl+C is the only way to stop a live capture session -- without this, the only way the
-// main loop ever exits is the pipeline dying on its own (camera disconnect/crash), in which
-// case Shutdown()/export never run either.
 std::atomic<bool> bContinueRunning(true);
 
 void SignalHandler(int signum) {
@@ -26,11 +23,6 @@ void SignalHandler(int signum) {
     bContinueRunning = false;
 }
 
-// Exports MapPoints to a .ply file for rendering. GetWorldPos() returns Eigen::Vector3f in this
-// fork, not cv::Mat. Points come from System::GetAllMapPoints() (added upstream in
-// ProjectNerva/ORB_SLAM3 commit 30db3fc), which aggregates every map ever created during the
-// run via Atlas::GetAllMapPoints() -- unlike GetTrackedMapPoints(), which only returns the last
-// processed frame's matched keypoints.
 void SaveMapPointsToPly(const std::vector<ORB_SLAM3::MapPoint*>& vpMapPoints, const std::string& filename) {
     std::cout << "Saving " << vpMapPoints.size() << " mappoints to " << filename << "..." << std::endl;
 
@@ -114,8 +106,7 @@ int main(int argc, char** argv) {
     // starting the pipeline
     pipeline.start();
 
-    std::signal(SIGINT, SignalHandler);
-    std::cout << "Starting OAK-D stream in HEADLESS mode. Press Ctrl+C to stop and save." << std::endl;
+    std::cout << "Starting OAK-D stream in HEADLESS mode." << std::endl; // eventually add the ctrl+c signal control and then termination
 
     // main logic loop
     std::vector<ORB_SLAM3::IMU::Point> imuBuffer;
@@ -123,7 +114,7 @@ int main(int argc, char** argv) {
     auto wallStart = std::chrono::steady_clock::now();
     bool motionConfirmed = false;
 
-    while(pipeline.isRunning() && bContinueRunning) {
+    while(pipeline.isRunning()) {
         // Drain every IMU packet available right now without blocking on it, so the buffer
         // never falls behind while we wait for the next stereo frame pair below.
         while(auto imuData = imuQueue->tryGet<dai::IMUData>()) {
@@ -213,13 +204,12 @@ int main(int argc, char** argv) {
     // termination
     std::cout << "Finalizing SLAM state..." << std::endl;
     pipeline.stop();
-    SLAM.Shutdown();
 
     // map points exports
     std::cout << "Saving KeyFrame trajectory..." << std::endl;
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 
-    std::vector<ORB_SLAM3::MapPoint*> vpMapPoints = SLAM.GetAllMapPoints();
+    std::vector<ORB_SLAM3::MapPoint*> vpMapPoints = SLAM.GetTrackedMapPoints();
     SaveMapPointsToPly(vpMapPoints, "MapPoints.ply");
 
     std:: cout << "Exitting Program" << std::endl;

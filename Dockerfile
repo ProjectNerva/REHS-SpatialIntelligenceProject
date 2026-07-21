@@ -50,14 +50,8 @@ RUN git clone --branch v0.9.1 --depth 1 https://github.com/stevenlovegrove/Pango
     && rm -rf /tmp/Pangolin
 
 # --- ORB-SLAM3 (the exact fork this project targets) -------------------------
-COPY patches/ /tmp/patches/
 RUN git clone --depth 1 https://github.com/ProjectNerva/ORB_SLAM3 /ORB_SLAM3 \
     && cd /ORB_SLAM3 \
-    # System::Shutdown() requests LocalMapping/LoopClosing to finish but the wait-until-actually-
-    # finished loop is commented out upstream, so Shutdown() returns while those threads are still
-    # mid-culling/mid-BA -- racing with whatever the caller does next (reading the map, exiting the
-    # process). Un-comment it; see patches/orb_slam3_shutdown_wait.patch for the full rationale.
-    && git apply /tmp/patches/orb_slam3_shutdown_wait.patch \
     && chmod +x build.sh \
     && ./build.sh
 

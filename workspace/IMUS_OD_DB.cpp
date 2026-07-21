@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <csignal>
 #include <atomic>
+#include <set>
 
 #include <opencv2/opencv.hpp>
 #include <Eigen/Core>
@@ -28,6 +29,28 @@ void SignalHandler(int signum) {
     bContinueRunning = false;
 }
 
+// Deterministic, visually-distinct color per map id. GetAllMapPoints() aggregates points from
+// every map the Atlas ever created during a run, including sub-maps orphaned by a tracking
+// reset that never got merged back via loop closure -- each of those lives in its own
+// unrelated local coordinate frame. Coloring by owning map makes that fragmentation visible
+// instead of misleading (a uniform color makes disconnected fragments look like one map).
+// Hues are spaced by the golden angle so any number of maps stay visually separable, unlike a
+// small fixed palette that would repeat once there are more maps than colors.
+void MapIdToColor(unsigned long mapId, unsigned char& r, unsigned char& g, unsigned char& b) {
+    double hue = std::fmod(mapId * 137.508, 360.0);
+    double c = 1.0, x = c * (1 - std::fabs(std::fmod(hue / 60.0, 2) - 1));
+    double rf, gf, bf;
+    if(hue < 60)       { rf = c; gf = x; bf = 0; }
+    else if(hue < 120) { rf = x; gf = c; bf = 0; }
+    else if(hue < 180) { rf = 0; gf = c; bf = x; }
+    else if(hue < 240) { rf = 0; gf = x; bf = c; }
+    else if(hue < 300) { rf = x; gf = 0; bf = c; }
+    else               { rf = c; gf = 0; bf = x; }
+    r = static_cast<unsigned char>(rf * 255);
+    g = static_cast<unsigned char>(gf * 255);
+    b = static_cast<unsigned char>(bf * 255);
+}
+
 // Exports MapPoints to a .ply file for rendering. GetWorldPos() returns Eigen::Vector3f in this
 // fork, not cv::Mat. Points come from System::GetAllMapPoints() (added upstream in
 // ProjectNerva/ORB_SLAM3 commit 30db3fc), which aggregates every map ever created during the
@@ -39,19 +62,31 @@ void SaveMapPointsToPly(const std::vector<ORB_SLAM3::MapPoint*>& vpMapPoints, co
     // Collected up front so the PLY header's vertex count matches the body exactly (a header
     // count that doesn't match the number of vertex lines written produces a malformed file
     // most PLY readers reject).
-    std::vector<Eigen::Vector3f> validPositions;
-    validPositions.reserve(vpMapPoints.size());
+    struct ColoredPoint { Eigen::Vector3f pos; unsigned long mapId; };
+    std::vector<ColoredPoint> validPoints;
+    validPoints.reserve(vpMapPoints.size());
+    std::set<unsigned long> distinctMapIds;
     for(size_t i = 0; i < vpMapPoints.size(); i++) {
         if(!vpMapPoints[i] || vpMapPoints[i]->isBad()) continue;
-        validPositions.push_back(vpMapPoints[i]->GetWorldPos());
+        ORB_SLAM3::Map* pMap = vpMapPoints[i]->GetMap();
+        unsigned long mapId = pMap ? pMap->GetId() : 0;
+        validPoints.push_back({vpMapPoints[i]->GetWorldPos(), mapId});
+        distinctMapIds.insert(mapId);
+    }
+    if(distinctMapIds.size() > 1) {
+        std::cout << "[WARN] Points span " << distinctMapIds.size()
+                  << " disconnected maps (never merged by loop closure) -- colored per-map in the .ply." << std::endl;
     }
 
     std::ofstream f;
     f.open(filename.c_str());
-    f << "ply\nformat ascii 1.0\nelement vertex " << validPositions.size() << "\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n";
+    f << "ply\nformat ascii 1.0\nelement vertex " << validPoints.size() << "\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n";
 
-    for(const auto& pos : validPositions) {
-        f << pos.x() << " " << pos.y() << " " << pos.z() << " 255 0 0\n";
+    for(const auto& cp : validPoints) {
+        unsigned char r, g, b;
+        MapIdToColor(cp.mapId, r, g, b);
+        f << cp.pos.x() << " " << cp.pos.y() << " " << cp.pos.z() << " "
+          << static_cast<int>(r) << " " << static_cast<int>(g) << " " << static_cast<int>(b) << "\n";
     }
     f.close();
     std::cout << "Done saving." << std::endl;
