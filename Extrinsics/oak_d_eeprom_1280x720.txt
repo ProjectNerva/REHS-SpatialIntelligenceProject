@@ -1,0 +1,58 @@
+Left Camera Intrinsics (Matrix):
+ [[571.6651001    0.         651.5413208 ]
+ [  0.         571.6651001  349.82781982]
+ [  0.           0.           1.        ]]
+Left fx: 571.6651000976562, cx: 651.5413208007812
+
+Right Camera Intrinsics (Matrix):
+ [[577.34265137   0.         665.77648926]
+ [  0.         577.34265137 344.30456543]
+ [  0.           0.           1.        ]]
+Right fx: 577.3426513671875, cx: 665.7764892578125
+
+Stereo Extrinsics CAM_B->CAM_C, useSpecTranslation=False [USE THIS for Stereo.T_c1_c2, meters]:
+ [[ 9.99810994e-01 -6.20565983e-03 -1.84238441e-02 -7.49669746e-02]
+ [ 6.16855640e-03  9.99978781e-01 -2.07003742e-03 -1.76885049e-04]
+ [ 1.84362978e-02  1.95599720e-03  9.99828041e-01 -4.10601147e-04]
+ [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]
+
+Stereo Extrinsics CAM_B->CAM_C, useSpecTranslation=True [board-spec/CAD reference, meters]:
+ [[ 9.99810994e-01 -6.20565983e-03 -1.84238441e-02 -7.50000030e-02]
+ [ 6.16855640e-03  9.99978781e-01 -2.07003742e-03  9.31322554e-12]
+ [ 1.84362978e-02  1.95599720e-03  9.99828041e-01  7.45058043e-11]
+ [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]
+
+Stereo: spec vs per-unit calibration DIFFER -- per-unit stereo calibration confirmed
+
+IMU Extrinsics getCameraToImuExtrinsics(CAM_B), useSpecTranslation=False [USE THIS for IMU.T_b_c1, meters]:
+ [[ 9.99944866e-01 -9.56354942e-03  4.33608191e-03  8.35668761e-04]
+ [-9.58210137e-03 -9.99944925e-01  4.27812198e-03 -7.08588515e-04]
+ [ 4.29493235e-03 -4.31943499e-03 -9.99981403e-01 -5.46175324e-05]
+ [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]
+
+IMU Extrinsics getCameraToImuExtrinsics(CAM_B), useSpecTranslation=True [board-spec/CAD reference, meters]:
+ [[ 9.99944866e-01 -9.56354942e-03  4.33608191e-03  4.67845850e-04]
+ [-9.58210137e-03 -9.99944925e-01  4.27812198e-03 -5.30965684e-04]
+ [ 4.29493235e-03 -4.31943499e-03 -9.99981403e-01 -1.70583185e-03]
+ [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]
+
+IMU: spec vs per-unit calibration DIFFER -- per-unit IMU calibration confirmed
+
+Left Distortion Coefficients [k1,k2,p1,p2,k3,...]:
+ [ 5.31889975e-01 -1.72359914e-01  1.78092072e-04 -4.54307941e-04
+ -1.33874128e-02  8.74431014e-01 -1.03002273e-01 -5.81972115e-02
+  0.00000000e+00  0.00000000e+00  0.00000000e+00  0.00000000e+00
+  0.00000000e+00  0.00000000e+00]
+Right Distortion Coefficients [k1,k2,p1,p2,k3,...]:
+ [ 1.36572003e+00  1.36647090e-01 -1.67479928e-04 -4.13311558e-04
+ -7.58169033e-03  1.71280026e+00  4.78156060e-01 -1.16826408e-02
+  0.00000000e+00  0.00000000e+00  0.00000000e+00  0.00000000e+00
+  0.00000000e+00  0.00000000e+00]
+
+IMU Noise Parameters (IMU: BNO086, averaged across x/y/z):
+  IMU.NoiseAcc:  0.07621662815411885
+  IMU.NoiseGyro: 0.4806399941444397
+  IMU.AccWalk:   6.0938774064804115e-05
+  IMU.GyroWalk:  0.06944062188267708
+
+Saved to: /home/t4-ucsd-rehs/REHS-SIP/Extrinsics/oak_d_eeprom_1280x720.txt

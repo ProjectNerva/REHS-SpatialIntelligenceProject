@@ -30,27 +30,35 @@ with dai.Device() as device, open(output_file, 'w') as f:
     emit("\nRight Camera Intrinsics (Matrix):\n", np.array(right_intrinsics))
     emit(f"Right fx: {right_intrinsics[0][0]}, cx: {right_intrinsics[0][2]}")
 
-    # Stereo extrinsics -- direction is ambiguous from DepthAI's docstring alone, so emit BOTH
-    # and compare against the known-working OAK_D.yaml (whose Stereo.T_c1_c2 comment claims
-    # "CAM_B -> CAM_C", i.e. left -> right) to determine which call actually matches which label.
-    T_b_to_c = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C)
-    T_c_to_b = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_C, dai.CameraBoardSocket.CAM_B)
-    emit("\nStereo Extrinsics getCameraExtrinsics(CAM_B, CAM_C) [candidate for T_c1_c2, left->right]:\n", np.array(T_b_to_c))
-    emit("\nStereo Extrinsics getCameraExtrinsics(CAM_C, CAM_B) [alternate direction, right->left]:\n", np.array(T_c_to_b))
+    # Stereo extrinsics: getCameraExtrinsics(src, dst) per DepthAI's own docstring returns the
+    # transform with src as origin -- so (CAM_B, CAM_C) is left->right, matching Stereo.T_c1_c2's
+    # "CAM_B -> CAM_C" label directly (no direction ambiguity, confirmed against the installed
+    # depthai package's docstring). Requested directly in METERs so it can be pasted into the
+    # yaml with no manual cm->m conversion (a past transcription step that had no check on it).
+    #
+    # useSpecTranslation compares board-spec/CAD translation (True) against this unit's actual
+    # loaded calibration (False, what the yaml should use). If they match, this unit never got
+    # an individually-measured translation and you're relying on the nominal design value.
+    T_spec = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C, True, dai.LengthUnit.METER)
+    T_calib = calib_data.getCameraExtrinsics(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C, False, dai.LengthUnit.METER)
+    stereo_matches = np.allclose(T_spec, T_calib)
+    emit("\nStereo Extrinsics CAM_B->CAM_C, useSpecTranslation=False [USE THIS for Stereo.T_c1_c2, meters]:\n", np.array(T_calib))
+    emit("\nStereo Extrinsics CAM_B->CAM_C, useSpecTranslation=True [board-spec/CAD reference, meters]:\n", np.array(T_spec))
+    emit(f"\nStereo: spec vs per-unit calibration {'MATCH -- no individual stereo calibration on this unit' if stereo_matches else 'DIFFER -- per-unit stereo calibration confirmed'}")
 
-    # IMU extrinsics -- same direction ambiguity. The working OAK_D.yaml's IMU.T_b_c1 comment
-    # says it came from getCameraToImuExtrinsics(CAM_B); emit both so that can be verified/redone.
+    # IMU extrinsics: getCameraToImuExtrinsics(CAM_B) is documented by DepthAI as "rotation and
+    # translation from the camera to IMU" -- exactly ORB-SLAM3's IMU.T_b_c1 convention (transform
+    # a point from the camera frame into the body/IMU frame). Not a guess between two candidates;
+    # this is the correct call by definition. Same spec-vs-calibrated comparison as above.
     try:
-        cam_to_imu = calib_data.getCameraToImuExtrinsics(dai.CameraBoardSocket.CAM_B)
-        emit("\nIMU Extrinsics getCameraToImuExtrinsics(CAM_B) [candidate for IMU.T_b_c1, camera->body]:\n", np.array(cam_to_imu))
+        imu_spec = calib_data.getCameraToImuExtrinsics(dai.CameraBoardSocket.CAM_B, True, dai.LengthUnit.METER)
+        imu_calib = calib_data.getCameraToImuExtrinsics(dai.CameraBoardSocket.CAM_B, False, dai.LengthUnit.METER)
+        imu_matches = np.allclose(imu_spec, imu_calib)
+        emit("\nIMU Extrinsics getCameraToImuExtrinsics(CAM_B), useSpecTranslation=False [USE THIS for IMU.T_b_c1, meters]:\n", np.array(imu_calib))
+        emit("\nIMU Extrinsics getCameraToImuExtrinsics(CAM_B), useSpecTranslation=True [board-spec/CAD reference, meters]:\n", np.array(imu_spec))
+        emit(f"\nIMU: spec vs per-unit calibration {'MATCH -- IMU translation is the nominal board-design value, not individually measured' if imu_matches else 'DIFFER -- per-unit IMU calibration confirmed'}")
     except Exception as e:
         emit(f"\nCould not read getCameraToImuExtrinsics: {e}")
-
-    try:
-        imu_to_cam = calib_data.getImuToCameraExtrinsics(dai.CameraBoardSocket.CAM_B)
-        emit("\nIMU Extrinsics getImuToCameraExtrinsics(CAM_B) [alternate direction, body->camera]:\n", np.array(imu_to_cam))
-    except Exception as e:
-        emit(f"\nCould not read getImuToCameraExtrinsics: {e}")
 
     # Distortion coefficients for Left (CAM_B) and Right (CAM_C)
     # Perspective model order: [k1, k2, p1, p2, k3, k4, k5, k6, s1, s2, s3, s4, taux, tauy]

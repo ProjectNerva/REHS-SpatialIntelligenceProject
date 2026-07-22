@@ -6,6 +6,7 @@
 #include <thread>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <algorithm>
 #include <csignal>
 #include <atomic>
@@ -194,6 +195,7 @@ int main(int argc, char** argv) {
         double lastTframe = -1.0;      // previous frame's timestamp, to spot stalls/gaps
         double runStartTframe = -1.0;  // this run's first frame timestamp, for the init gate below
         bool motionConfirmed = false;
+        int lastTrackState = -100;     // sentinel != any real eTrackingState, forces first print
 
         for(const auto& ts : vTimestamps) {
             if(!bContinueRunning) break;
@@ -274,26 +276,33 @@ int main(int argc, char** argv) {
             std::cout << "[DEBUG] TrackStereo took " << trackMs << "ms" << std::endl;
 
             // Tracking loss (fast motion, occlusion, entering an unmapped area) is handled
-            // inside TrackStereo: ORB-SLAM3 attempts relocalization first.
-            // if it is lost, it creates a new Atlas
-            // if(SLAM.isLost()) {
-            //     std::cout << "Tracking lost -- relocalizing or starting a new sub-map." << std::endl;
-            // }
+            // inside TrackStereo: ORB-SLAM3 attempts relocalization first, and only creates a
+            // new Atlas sub-map if that fails. Log every state transition so a LOST->OK bounce
+            // (relocalized) can be told apart from LOST persisting until a fresh map appears
+            // (reset) -- currently invisible from the console output.
+            int trackState = SLAM.GetTrackingState();
+            if(trackState != lastTrackState) {
+                static const char* kStateNames[] = {
+                    "SYSTEM_NOT_READY", "NO_IMAGES_YET", "NOT_INITIALIZED",
+                    "OK", "RECENTLY_LOST", "LOST", "OK_KLT"
+                };
+                auto nameOf = [&](int s) {
+                    int idx = s + 1; // SYSTEM_NOT_READY == -1, so shift to a 0-based index
+                    return (idx >= 0 && idx < 7) ? kStateNames[idx] : "UNKNOWN";
+                };
+                std::cout << "[DEBUG] Tracking state: "
+                          << (lastTrackState == -100 ? "<init>" : nameOf(lastTrackState))
+                          << " -> " << nameOf(trackState) << std::endl;
+                lastTrackState = trackState;
+            }
         }
     }
 
-    // All runs processed (or interrupted mid-playback above) -- keep the process alive so the
-    // finished map stays viewable in the Pangolin window until Ctrl+C, rather than exiting and
-    // tearing the viewer down the moment dataset playback ends.
-    // NOTE: does not also check SLAM.isFinished() here -- on this fork, isFinished() reaches
-    // into LocalMapping::GetCurrKFTime(), which segfaults if called before any KeyFrame has
-    // ever been created (confirmed via gdb backtrace). Ctrl+C (bContinueRunning) is the only
-    // supported way to stop, which already satisfies "persistent until ctrl c is pressed".
+    // All runs processed (or interrupted mid-playback above via Ctrl+C) -- proceed straight to
+    // shutdown/export instead of blocking on further input, so batch runs (piping to a log file
+    // for later analysis) terminate on their own once playback finishes.
     if(bContinueRunning) {
-        std::cout << "Dataset playback complete. Viewer stays open -- press Ctrl+C to stop and save." << std::endl;
-        while(bContinueRunning) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+        std::cout << "Dataset playback complete." << std::endl;
     }
 
     // termination
@@ -309,5 +318,11 @@ int main(int argc, char** argv) {
 
     std::cout << "Exitting Program" << std::endl;
 
-    return 0;
+    // Shutdown() intermittently segfaults during teardown on this fork (non-deterministic
+    // thread/Pangolin-static race, confirmed under gdb to happen after every output above is
+    // already written) -- now that this runs unattended at the end of every batch run instead
+    // of only after a manual Ctrl+C, quick_exit avoids that crash turning into a nonzero exit
+    // code / truncated log in a scripted run.
+    std::cout.flush();
+    std::quick_exit(0);
 }

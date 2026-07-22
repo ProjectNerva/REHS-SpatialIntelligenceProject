@@ -6,17 +6,18 @@ File.version: "1.0"
 # CAM_C, so PinHole is correct.
 Camera.type: "PinHole"
 
-# fx/fy/cx/cy queried directly at capture resolution (getCameraIntrinsics(CAM_B/C, 640, 360)),
-# not manually scaled from a 1280x720 calibration. See Extrinsics/oak_d_eeprom_640x360.txt for
-# the raw dump (values match the old manually-halved ones to ~4 decimal places, so that math
-# was fine -- this just removes the manual step as a future error source).
+# fx/fy/cx/cy queried directly at 1280x720 (getCameraIntrinsics(CAM_B/C, 1280, 720)) -- this
+# yaml exists because IMUS_OD_DB.cpp replays oakd_recorder.cpp's native-resolution recordings
+# (1280x720), which do NOT match OAK_D.yaml's 640x360 (that one is calibrated for IMUS_OD.cpp's
+# live-capture downscale). Using the wrong-resolution yaml against these images was corrupting
+# rectification on every frame -- see Extrinsics/oak_d_eeprom_1280x720.txt for the raw dump.
 #--------------------------------------------------------------------------------------------
 # Camera1 = left mono camera (CAM_B / OV9282)
 #--------------------------------------------------------------------------------------------
-Camera1.fx: 285.832550
-Camera1.fy: 285.832550
-Camera1.cx: 325.770660
-Camera1.cy: 174.913910
+Camera1.fx: 571.665100
+Camera1.fy: 571.665100
+Camera1.cx: 651.541321
+Camera1.cy: 349.827820
 Camera1.k1: 0.531890
 Camera1.k2: -0.172360
 Camera1.p1: 0.000178
@@ -26,28 +27,29 @@ Camera1.k3: -0.013387
 #--------------------------------------------------------------------------------------------
 # Camera2 = right mono camera (CAM_C / OV9282)
 #--------------------------------------------------------------------------------------------
-Camera2.fx: 288.671326
-Camera2.fy: 288.671326
-Camera2.cx: 332.888245
-Camera2.cy: 172.152283
+Camera2.fx: 577.342651
+Camera2.fy: 577.342651
+Camera2.cx: 665.776489
+Camera2.cy: 344.304565
 Camera2.k1: 1.365720
 Camera2.k2: 0.136647
 Camera2.p1: -0.000167
 Camera2.p2: -0.000413
 Camera2.k3: -0.007582
 
-Camera.width: 640    # was 1280 -- matches IMUS_OD.cpp camLeft/camRight build(640,360)
-Camera.height: 360   # was 720
+Camera.width: 1280    # matches oakd_recorder.cpp kWidth/kHeight -- native recorded resolution
+Camera.height: 720
 Camera.fps: 30
 
 Camera.RGB: 0
 
 #--------------------------------------------------------------------------------------------
-# Stereo.T_c1_c2: transform from Camera1 (CAM_B) to Camera2 (CAM_C). getCameraExtrinsics(src,
-# dst) returns the transform with src as origin per DepthAI's own docstring, so (CAM_B, CAM_C)
-# is left->right directly -- no direction ambiguity. useSpecTranslation=False (this unit's
-# actual per-device calibration, not board-spec/CAD default) DIFFERS from useSpecTranslation=
-# True, confirming this rig was individually calibrated. Raw dump: Extrinsics/oak_d_eeprom_640x360.txt.
+# Stereo.T_c1_c2: transform from Camera1 (CAM_B) to Camera2 (CAM_C). Resolution-independent --
+# identical to the proven value in OAK_D.yaml. getCameraExtrinsics(src, dst) returns the
+# transform with src as origin per DepthAI's own docstring, so (CAM_B, CAM_C) is left->right
+# directly. useSpecTranslation=False (this unit's actual per-device calibration) DIFFERS from
+# useSpecTranslation=True, confirming this rig was individually calibrated. Raw dump:
+# Extrinsics/oak_d_eeprom_1280x720.txt.
 #--------------------------------------------------------------------------------------------
 Stereo.T_c1_c2: !!opencv-matrix
    rows: 4
@@ -61,12 +63,11 @@ Stereo.T_c1_c2: !!opencv-matrix
 Stereo.ThDepth: 40.0   # <-- CALIBRATE / tune: generic ORB-SLAM3 example default, not a measured value for this rig
 
 #--------------------------------------------------------------------------------------------
-# IMU.T_b_c1: transform from Camera1 (CAM_B) to body/IMU frame. getCameraToImuExtrinsics(CAM_B)
-# is documented by DepthAI as "rotation/translation from the camera to IMU" -- exactly this
-# key's convention, not a guess between two candidate directions. useSpecTranslation=False
-# (used here) DIFFERS from useSpecTranslation=True, confirming this unit's IMU mount offset
-# was individually measured, not a shared board-design default. Raw dump:
-# Extrinsics/oak_d_eeprom_640x360.txt.
+# IMU.T_b_c1: transform from Camera1 (CAM_B) to body/IMU frame. Resolution-independent --
+# identical to the proven value in OAK_D.yaml. getCameraToImuExtrinsics(CAM_B) is documented by
+# DepthAI as "rotation/translation from the camera to IMU" -- exactly this key's convention.
+# useSpecTranslation=False (used here) DIFFERS from useSpecTranslation=True, confirming this
+# unit's IMU mount offset was individually measured. Raw dump: Extrinsics/oak_d_eeprom_1280x720.txt.
 #--------------------------------------------------------------------------------------------
 IMU.T_b_c1: !!opencv-matrix
    rows: 4
@@ -84,7 +85,7 @@ IMU.InsertKFsWhenLost: 1
 
 # Noise parameters, averaged across x/y/z from the factory Allan-variance calibration in the
 # dump (ORB-SLAM3's IMU noise model is scalar, not per-axis, so per-axis values from the dump
-# are averaged here rather than picking one axis arbitrarily).
+# are averaged here rather than picking one axis arbitrarily). Resolution-independent.
 IMU.NoiseGyro: 0.480640
 IMU.NoiseAcc: 0.076217
 IMU.GyroWalk: 0.069441
@@ -96,7 +97,7 @@ IMU.Frequency: 300.0
 #--------------------------------------------------------------------------------------------
 ORBextractor.nFeatures: 2000
 ORBextractor.scaleFactor: 1.2
-ORBextractor.nLevels: 6 
+ORBextractor.nLevels: 6
 ORBextractor.iniThFAST: 20
 ORBextractor.minThFAST: 7
 
