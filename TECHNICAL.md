@@ -1,25 +1,73 @@
 # SLAM Filming Guide
 
 Grew out of diagnosing `run8`'s map fragmentation (2026-07-21): 50 disconnected map resets in a
-~68s recording, traced to the IMU initializer repeatedly failing with `not enough acceleration` /
-`Not enough motion for initializing. Reseting...` (60 occurrences combined) far more often than
-plain visual tracking failure (`Fail to track local map!`, 20 occurrences). Root cause: the
-recording's motion didn't sustain enough translational acceleration for long enough. The numbers
-below are measured from that investigation, not generic advice -- see [[euroc-test-harness]] /
-[[orbslam3-docker-env]] for the tooling this was diagnosed with.
+~68s recording, traced initially to `not enough acceleration` / `Not enough motion for
+initializing. Reseting...` messages, then confirmed against this fork's actual source
+(`/ORB_SLAM3/src/Tracking.cc`, `/ORB_SLAM3/src/LocalMapping.cc`, read 2026-07-22) rather than
+inferred from log messages alone. See [[euroc-test-harness]] / [[orbslam3-docker-env]] for the
+tooling this was diagnosed with.
 
-## Why this matters: the 15-second target
+## The real mechanism (confirmed from source, not inferred)
 
-ORB-SLAM3's IMU initialization happens in two stages, gated by continuous elapsed time on a
-single map (measured empirically from this fork's own log output, matches stock defaults):
-- **VIBA 1** (~5s of continuous good tracking after map creation): first bias/gravity refinement.
-- **VIBA 2** (~15s of continuous good tracking): the map is now "mature" -- from this point on,
-  losing tracking triggers *relocalization* against the existing map instead of a full reset.
+ORB-SLAM3 tracks a per-map clock called `mTinit` in `LocalMapping.cc`. **It is not wall-clock
+time** -- it only advances when the map is actually moving:
 
-Until a map reaches VIBA 2, every tracking loss is treated as fatal and the system starts a brand
-new map from scratch. Across every run filmed so far, no map has survived past ~8.5s -- meaning
-relocalization has never once had the chance to prove it works. **The single goal of a good
-recording is sustaining a map past 15 continuous seconds at least once.**
+```cpp
+float dist = (KF->mPrevKF->GetCameraCenter() - KF->GetCameraCenter()).norm()
+           + (KF->mPrevKF->mPrevKF->GetCameraCenter() - KF->mPrevKF->GetCameraCenter()).norm();
+if (dist > 0.05)
+    mTinit += KF->mTimeStamp - KF->mPrevKF->mTimeStamp;
+```
+`dist` is the real, metric camera-center displacement summed across the last two keyframe-to-
+keyframe hops. Below 5cm of combined displacement, `mTinit` simply doesn't advance that step --
+it pauses, it doesn't reset.
+
+**The map-killing condition** is separate and much sharper:
+```cpp
+if (!GetIniertialBA2() && (mTinit < 10.f) && (dist < 0.02))
+    // "Not enough motion for initializing. Reseting..." -- map destroyed
+```
+While `mTinit` is still under 10 seconds, if keyframe-to-keyframe displacement drops below **2cm**,
+the entire map is destroyed outright -- not paused, killed. Once `mTinit` crosses 10s, this check
+is skipped forever on that map (the guard is `mTinit<10.f`), so a map that survives its first 10
+motion-seconds can no longer die this particular way.
+
+Bias/gravity/scale refinement then happens in two stages, both gated on this same motion-time
+`mTinit`, not on wall-clock survival:
+- **VIBA 1** at `mTinit > 5.0f` -- matches what was empirically measured from log timestamps
+  before this source was available (~5.1-5.9s), now explained: those maps happened to be moving
+  consistently enough that mTinit tracked close to wall-clock time.
+- **VIBA 2** at `mTinit > 15.0f` -- the map becomes "mature": from this point on, losing tracking
+  triggers *relocalization* instead of a reset. No map filmed so far has reached this.
+
+**The actionable rule this produces:** the first 10 seconds of accumulated *motion* time after
+any reset are the fragile window. A single near-stop (under 2cm of keyframe-to-keyframe travel)
+inside that window kills the map outright, resetting progress to zero. Survive it, and the
+specific failure mode that has caused most resets so far can't happen again on that map -- the
+remaining climb to 15s (VIBA 2) is real but no longer has this landmine in it.
+
+This also explains `run10`'s best result: a map that survived 10.8 *wall-clock* seconds still
+died via this exact message -- because wall-clock time isn't what was being measured. Some of
+that lifespan was spent on keyframe hops under the 5cm bar (not accumulating `mTinit` at all), and
+it eventually hit one under 2cm and died before `mTinit` itself ever reached 10.
+
+### A secondary, minor mechanism: `not enough acceleration` / `not IMU meas`
+
+These come from a *different* function (`Tracking::StereoInitialization()`), and only matter
+while a map is trying to be (re-)born after a reset, not while one is alive and growing:
+```cpp
+if (mCurrentFrame.N > 500) {                              // needs 500+ ORB keypoints this frame
+    if (!mCurrentFrame.mpImuPreintegrated || !mLastFrame.mpImuPreintegrated)
+        // "not IMU meas" -- one of the two frames has no IMU preintegration yet, retry next frame
+    if (!mFastInit && (curFrame.avgA - lastFrame.avgA).norm() < 0.5)
+        // "not enough acceleration" -- consecutive frames' average accel vector barely changed
+}
+```
+This retries every single frame while state is `NOT_INITIALIZED`, waiting for one frame pair
+~33ms apart with enough of a jerk between them (a footstep, a small turn) and enough features
+(>500). Seeing this print 40-70 times in a run sounds alarming but is really only ~1.5-2.5 seconds
+of retries before it succeeds -- a minor, self-resolving delay, not the actual bottleneck. The
+real bottleneck is the 10-second fragile window above.
 
 ## Before you start recording
 
@@ -27,7 +75,9 @@ recording is sustaining a map past 15 continuous seconds at least once.**
    in `oakd_recorder.cpp` yet (open item, not a filming technique), so auto-exposure is at the
    mercy of whatever's in frame -- avoid pointing at bright windows/lights while starting.
 2. Frame the shot to avoid blank, featureless surfaces (bare walls, ceilings, floors) filling
-   the view -- ORB needs texture to detect and match features at all.
+   the view -- ORB needs texture to detect and match features at all. Confirmed directly: 3 of 5
+   sampled `Fail to track local map!` frames from `run8` showed a blank wall, glare, or an
+   extreme close-range flat surface filling most of the image.
 3. Confirm the OAK-D didn't crash on the previous run (`Device crashed, but no crash dump could
    be extracted` in the console) before starting a new one -- an unstable USB power supply causes
    this and will corrupt the recording regardless of how well it's filmed.
@@ -38,17 +88,16 @@ recording is sustaining a map past 15 continuous seconds at least once.**
    (`kHoldStillSec`) for a clean bias estimate -- console prints `[GATE] hold still` until this
    clears.
 5. **The moment `[GATE] motion confirmed` prints, start continuous, deliberate translational
-   motion -- walking or side-stepping, not panning/rotating in place.** Pure rotation lets the
-   IMU observe orientation change but not scale/gravity, which is what stalls initialization.
-6. **Sustain that motion for at least 15-20 uninterrupted seconds** right at the start, before
-   doing anything else -- this is the window that needs to clear VIBA 2. Treat it like a
-   dedicated "calibration walk," not just a warm-up.
-7. **Never hold still or pure-pan for more than ~2-3 seconds at a stretch, for the entire
-   recording, not just the start.** Measured from `run8`'s actual IMU data: the code's own motion
-   gate checks a 0.3 m/s² acceleration std-dev threshold, and 28% of that recording's 1-second
-   windows fell below it -- including two sustained ~5-7 second dead patches mid-recording. A
-   patch that long is enough to stall or kill an in-progress IMU initialization even if visual
-   tracking is going fine.
+   motion -- walking or side-stepping, not panning/rotating in place.** Pure rotation moves the
+   camera center almost not at all, so it doesn't count as `dist` above.
+6. **Whenever a reset happens (or at the very start), commit to at least 10 seconds of
+   uninterrupted motion with no near-stop.** This is the actual fragile window, not a soft
+   suggestion -- a single pause under ~2cm of travel between keyframes inside this window kills
+   the map instantly and the 10-second countdown restarts from zero on the next map. Watch the
+   `[DEBUG] Tracking state:` log for `NOT_INITIALIZED -> OK` transitions -- that's when the clock
+   starts.
+7. **After that first 10 seconds, keep going for a total of ~15-20s** to give VIBA 2 a chance --
+   this part is real but comparatively forgiving, since the hard kill-switch is already behind you.
 8. Keep motion smooth, not jerky -- avoid whip-fast rotations or sudden stops, especially in the
    first few seconds after any tracking loss, when the map is freshly reset and has very few
    points to match against.
@@ -57,7 +106,7 @@ recording is sustaining a map past 15 continuous seconds at least once.**
    width between consecutive frames.
 10. Periodically revisit already-mapped areas rather than only pushing into novel space -- gives
     relocalization something to match against if tracking does drop, and is what actually
-    exercises loop closure.
+    exercises loop closure (still untested -- no map has reached VIBA 2 yet).
 
 ## Already handled in code (not filming technique, listed for context)
 
@@ -66,6 +115,9 @@ recording is sustaining a map past 15 continuous seconds at least once.**
 - Stereo/camera intrinsics: same, pulled directly at each pipeline's native capture resolution.
 - IMU noise parameters: from the factory Allan-variance calibration, not generic defaults.
 - 2s hold-still-then-motion init gate: implemented in `IMUS_OD.cpp` / `IMUS_OD_DB.cpp`.
+- `Stereo.ThDepth: 40.0`: checked against the actual baseline (0.075m) and rectified focal
+  length -- gives a 3.0m trusted-depth cutoff at ~7% relative error, consistent with how the
+  stock EuRoC defaults were tuned for their own baseline. Confirmed reasonable, not changed.
 - `ORBextractor.nFeatures: 2000` -- reasonable already; raising it further trades CPU headroom
   (relevant live on the RPi5, less so replaying recordings in the dev container) for a small
   robustness gain, not yet tested against whether it moves the needle here.
@@ -74,14 +126,15 @@ recording is sustaining a map past 15 continuous seconds at least once.**
 
 - Exposure control (`oakd_recorder.cpp` doesn't cap auto-exposure) -- motion blur under indoor
   lighting during fast motion is a plausible remaining contributor, untested in isolation.
-- `Stereo.ThDepth: 40.0` is still the generic ORB-SLAM3 example default, not a measured value
-  for this rig.
+- Whether relocalization actually works at all once a map reaches VIBA 2 -- completely untested,
+  since no map has gotten there yet.
 
-## Validating a recording before running it through SLAM
+## On pre-flight-checking a recording before running it through SLAM
 
-Cheaper than a full SLAM run: check whether the raw IMU data actually clears the motion bar
-before spending time on tracking/mapping analysis. From `mav0/imu0/data.csv`, compute the
-acceleration-magnitude std-dev in 1-second windows across the clip and look for any 15+ second
-stretch where every window stays above ~0.3 m/s². If no such stretch exists, the recording won't
-produce a mature map regardless of how good visual tracking is -- re-film instead of debugging
-further down the pipeline.
+Earlier draft of this guide proposed checking raw accelerometer std-dev against a threshold as a
+cheap pre-check. That's now known to be the wrong signal -- the real criterion (`dist` between
+estimated keyframe camera centers) is a property of the *tracked trajectory*, not the raw IMU
+stream, and isn't computable without actually running the tracker. There isn't a cheap proxy for
+this; the only real test is replaying the recording through `SLAM_DEBUG` and checking whether
+`mTinit`-driven messages (`start VIBA 1/2`, `Not enough motion for initializing`) show what you'd
+expect.
