@@ -95,6 +95,15 @@ int main(int argc, char** argv) {
     camLeft->build(dai::CameraBoardSocket::CAM_B, std::make_pair(kWidth, kHeight), kCameraFps);
     camRight->build(dai::CameraBoardSocket::CAM_C, std::make_pair(kWidth, kHeight), kCameraFps);
 
+    // Cap max auto-exposure time so a bright window/light source in frame can't force a long
+    // exposure that clips the rest of the scene to pure white -- confirmed the actual failure
+    // mode in run11/run12 (sampled Fail-to-track frames showed near-total window blowout).
+    // This doesn't fully solve backlit scenes (that needs real per-region metering or HDR, not
+    // available here), but a lower ceiling measurably reduces how badly a window clips at the
+    // cost of slightly darker room content -- a real partial mitigation, not a complete fix.
+    camLeft->initialControl.setAutoExposureLimit(20000);   // 20ms ceiling
+    camRight->initialControl.setAutoExposureLimit(20000);
+
     auto* leftOut = camLeft->requestOutput(std::make_pair(kWidth, kHeight));
     auto* rightOut = camRight->requestOutput(std::make_pair(kWidth, kHeight));
 
