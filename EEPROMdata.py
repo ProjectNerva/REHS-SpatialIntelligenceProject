@@ -60,12 +60,52 @@ with dai.Device() as device, open(output_file, 'w') as f:
     except Exception as e:
         emit(f"\nCould not read getCameraToImuExtrinsics: {e}")
 
-    # Distortion coefficients for Left (CAM_B) and Right (CAM_C)
+    # FOV as stored in EEPROM -- the actual ground truth for the lens's field of view, so a
+    # >180 degree claim can be checked against the device itself instead of a spec sheet.
+    try:
+        left_fov = calib_data.getFov(dai.CameraBoardSocket.CAM_B)
+        right_fov = calib_data.getFov(dai.CameraBoardSocket.CAM_C)
+        emit(f"\nLeft FOV (diagonal, from EEPROM): {left_fov}")
+        emit(f"Right FOV (diagonal, from EEPROM): {right_fov}")
+    except Exception as e:
+        emit(f"\nCould not read getFov: {e}")
+
+    # Query the actual distortion model rather than assuming it -- Perspective and Fisheye
+    # coefficient arrays use different orders/lengths, so this must be checked, not inferred.
+    # There is no separate call to fetch "the other model's" coefficients: the device was
+    # calibrated with exactly one of these, and that's the only one with real data behind it.
+    left_model = calib_data.getDistortionModel(dai.CameraBoardSocket.CAM_B)
+    right_model = calib_data.getDistortionModel(dai.CameraBoardSocket.CAM_C)
+    emit(f"\nLeft Distortion Model: {left_model}")
+    emit(f"Right Distortion Model: {right_model}")
+
     # Perspective model order: [k1, k2, p1, p2, k3, k4, k5, k6, s1, s2, s3, s4, taux, tauy]
+    # Fisheye (ORB-SLAM3 KannalaBrandt8) model order: [k1, k2, k3, k4]
     left_distortion = calib_data.getDistortionCoefficients(dai.CameraBoardSocket.CAM_B)
     right_distortion = calib_data.getDistortionCoefficients(dai.CameraBoardSocket.CAM_C)
-    emit("\nLeft Distortion Coefficients [k1,k2,p1,p2,k3,...]:\n", np.array(left_distortion))
-    emit("Right Distortion Coefficients [k1,k2,p1,p2,k3,...]:\n", np.array(right_distortion))
+    emit("\nLeft Distortion Coefficients:\n", np.array(left_distortion))
+    emit("Right Distortion Coefficients:\n", np.array(right_distortion))
+
+    def emit_kb8_yaml(label, model, fx, fy, cx, cy, coeffs):
+        if "FISHEYE" not in str(model).upper():
+            emit(f"\n{label}: distortion model is {model}, not Fisheye -- no KannalaBrandt8 "
+                 f"data exists on this unit (recalibrate with a fisheye routine to get real k1-k4).")
+            return
+        k1, k2, k3, k4 = coeffs[0], coeffs[1], coeffs[2], coeffs[3]
+        emit(f"\n{label} -- ready-to-paste KannalaBrandt8 yaml block:")
+        emit(f"  Camera.fx: {fx}")
+        emit(f"  Camera.fy: {fy}")
+        emit(f"  Camera.cx: {cx}")
+        emit(f"  Camera.cy: {cy}")
+        emit(f"  Camera.k1: {k1}")
+        emit(f"  Camera.k2: {k2}")
+        emit(f"  Camera.k3: {k3}")
+        emit(f"  Camera.k4: {k4}")
+
+    emit_kb8_yaml("Camera1 (CAM_B)", left_model, left_intrinsics[0][0], left_intrinsics[1][1],
+                  left_intrinsics[0][2], left_intrinsics[1][2], left_distortion)
+    emit_kb8_yaml("Camera2 (CAM_C)", right_model, right_intrinsics[0][0], right_intrinsics[1][1],
+                  right_intrinsics[0][2], right_intrinsics[1][2], right_distortion)
 
     # IMU noise parameters (Allan-variance-derived). ORB-SLAM3's IMU noise model is scalar,
     # not per-axis, so average x/y/z here the same way the working OAK_D.yaml already does.
