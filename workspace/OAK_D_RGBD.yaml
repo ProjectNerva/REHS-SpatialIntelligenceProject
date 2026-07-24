@@ -1,0 +1,71 @@
+%YAML:1.0
+
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+#--------------------------------------------------------------------------------------------
+# Camera1 = OAK-D's on-device StereoDepth node, depth-aligned to the RECTIFIED left mono
+# camera (CAM_B). Unlike OAK_D_1280x720.yaml (stereo-inertial), this is NOT the raw/distorted
+# CAM_B intrinsics -- RGBD mode gets a single image + an already-rectified depth map, with no
+# second camera + baseline for ORB-SLAM3 to rectify internally itself (that's what Stereo mode
+# does in Tracking::ComputeStereoMatches). So the numbers below are the RECTIFIED intrinsics
+# ORB-SLAM3 itself printed at startup when running the stereo-inertial pipeline on this exact
+# rig/resolution ("Camera 1 parameters after rectification"), not a fresh calibration -- k1..k3
+# are 0 because rectification removes distortion by definition.
+#--------------------------------------------------------------------------------------------
+Camera1.fx: 574.504000
+Camera1.fy: 574.504000
+Camera1.cx: 654.957000
+Camera1.cy: 350.753000
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+Camera1.k3: 0.0
+
+Camera.width: 1280
+Camera.height: 720
+Camera.fps: 30
+
+# CAM_B is mono (grayscale) -- ignored per ORB-SLAM3 convention when the image has 1 channel.
+Camera.RGB: 0
+
+# Same physical CAM_B/CAM_C baseline as OAK_D_1280x720.yaml (Extrinsics/oak_d_eeprom_1280x720.txt)
+# -- this is the real baseline the depth map was computed from, not a synthetic/virtual one, since
+# StereoDepth's block matching runs on this exact pair. Used by ORB-SLAM3's RGBD mode to compute
+# bf (baseline * fx) for the same close/far point classification stereo mode uses.
+Stereo.b: 0.0749683
+
+# Not re-derived here -- same baseline/rectified-focal-length reasoning already checked for this
+# rig in TECHNICAL.md (stereo-inertial), reused as-is since RGBD mode uses the identical
+# baseline*ThDepth cutoff math.
+Stereo.ThDepth: 40.0
+
+# DepthAI's StereoDepth node outputs depth as uint16 in millimeters by default -- divide by
+# 1000 to get meters, i.e. DepthMapFactor=1000 (NOT the TUM dataset convention of 5000, which
+# is specific to their own PNG depth encoding).
+RGBD.DepthMapFactor: 1000.0
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters -- same as OAK_D_1280x720.yaml
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 2000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 6
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters -- same as OAK_D_1280x720.yaml
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0

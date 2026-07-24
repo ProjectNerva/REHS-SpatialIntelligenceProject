@@ -40,3 +40,6 @@ set(ORB_SLAM3_LIBS
 
 add_executable(SLAM_DEBUG IMUS_OD_DB.cpp)
 target_link_libraries(SLAM_DEBUG ${ORB_SLAM3_LIBS})
+
+add_executable(RGBD_DEBUG RGBD_OD_DB.cpp)
+target_link_libraries(RGBD_DEBUG ${ORB_SLAM3_LIBS})

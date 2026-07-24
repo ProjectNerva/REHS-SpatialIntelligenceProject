@@ -19,10 +19,15 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
 #include <vector>
 
 #include <depthai/depthai.hpp>
@@ -31,8 +36,8 @@
 namespace fs = std::filesystem;
 
 // ---- fixed capture parameters (per current SLAM iteration) ----
-constexpr float kCameraFps = 15.0f;
-constexpr float kImuHz = 150.0f;
+constexpr float kCameraFps = 30.0f;
+constexpr float kImuHz = 300.0f;
 constexpr uint32_t kWidth = 1280;
 constexpr uint32_t kHeight = 720;
 constexpr int kImuBatchReportThreshold = 5;
@@ -59,6 +64,60 @@ struct ImuSample {
     double t;              // seconds
     double gx, gy, gz;
     double ax, ay, az;
+};
+
+// One stereo pair queued for disk write. Mats are cloned before queuing (depthai may reuse
+// the underlying buffer once the pipeline's message is released), so the writer thread owns
+// independent copies and never touches pipeline-owned memory.
+struct WriteJob {
+    fs::path leftPath, rightPath;
+    cv::Mat left, right;
+};
+
+// Runs on its own thread so PNG encode + disk I/O -- the actual bottleneck behind the frame
+// drops/stalls diagnosed from run15/run16/run18's frameDelta gaps -- never blocks the capture
+// loop from draining the next camera/IMU packets.
+class FrameWriter {
+public:
+    FrameWriter() : thread_(&FrameWriter::run, this) {}
+
+    ~FrameWriter() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            done_ = true;
+        }
+        cv_.notify_one();
+        thread_.join();
+    }
+
+    void enqueue(WriteJob job) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            queue_.push(std::move(job));
+        }
+        cv_.notify_one();
+    }
+
+private:
+    void run() {
+        while (true) {
+            std::unique_lock<std::mutex> lock(mutex_);
+            cv_.wait(lock, [this] { return done_ || !queue_.empty(); });
+            if (queue_.empty() && done_) return;
+            WriteJob job = std::move(queue_.front());
+            queue_.pop();
+            lock.unlock();
+
+            cv::imwrite(job.leftPath.string(), job.left);
+            cv::imwrite(job.rightPath.string(), job.right);
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::queue<WriteJob> queue_;
+    bool done_ = false;
+    std::thread thread_;  // must be declared last so it starts after the members above exist
 };
 
 int main(int argc, char** argv) {
@@ -129,6 +188,10 @@ int main(int argc, char** argv) {
 
     cv::namedWindow("oakd_recorder preview", cv::WINDOW_NORMAL);
 
+    // Owns the background PNG-encode/write thread for this recording's duration -- reset()
+    // just before exit blocks until every queued frame is flushed, so nothing is lost.
+    auto frameWriter = std::make_unique<FrameWriter>();
+
     int64_t frameCount = 0, imuCount = 0;
     std::vector<ImuSample> statBuffer;  // mirrors CSV content, used only for the on-screen readout
     double t0 = -1.0;                   // seconds, set on first frame
@@ -166,8 +229,9 @@ int main(int argc, char** argv) {
         cv::Mat left = inLeft->getCvFrame();
         cv::Mat right = inRight->getCvFrame();
 
-        cv::imwrite((cam0Dir / (std::to_string(tNs) + ".png")).string(), left);
-        cv::imwrite((cam1Dir / (std::to_string(tNs) + ".png")).string(), right);
+        frameWriter->enqueue(WriteJob{cam0Dir / (std::to_string(tNs) + ".png"),
+                                      cam1Dir / (std::to_string(tNs) + ".png"),
+                                      left.clone(), right.clone()});
         tsFile << tNs << '\n';
         ++frameCount;
 
@@ -237,6 +301,12 @@ int main(int argc, char** argv) {
 
     std::cout << "\nStopping..." << std::endl;
     pipeline.stop();
+
+    // Blocks until every queued frame has actually been written -- without this, stopping
+    // right after capture ends could truncate whatever's still sitting in the write queue.
+    std::cout << "Flushing remaining queued frames..." << std::endl;
+    frameWriter.reset();
+
     imuCsv.close();
     tsFile.close();
 

@@ -6,11 +6,6 @@ File.version: "1.0"
 # CAM_C, so PinHole is correct.
 Camera.type: "PinHole"
 
-# fx/fy/cx/cy queried directly at 1280x720 (getCameraIntrinsics(CAM_B/C, 1280, 720)) -- this
-# yaml exists because IMUS_OD_DB.cpp replays oakd_recorder.cpp's native-resolution recordings
-# (1280x720), which do NOT match OAK_D.yaml's 640x360 (that one is calibrated for IMUS_OD.cpp's
-# live-capture downscale). Using the wrong-resolution yaml against these images was corrupting
-# rectification on every frame -- see Extrinsics/oak_d_eeprom_1280x720.txt for the raw dump.
 #--------------------------------------------------------------------------------------------
 # Camera1 = left mono camera (CAM_B / OV9282)
 #--------------------------------------------------------------------------------------------

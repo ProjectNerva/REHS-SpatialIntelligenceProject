@@ -45,5 +45,14 @@ set(ORB_SLAM3_LIBS
     -lcrypto
 )
 
-add_executable(SLAM SIMU_OAKD.cpp)
-target_link_libraries(SLAM ${ORB_SLAM3_LIBS} depthai::core)
+# add_executable(SLAM_DEBUG SIMU_OAKD.cpp)
+# target_link_libraries(SLAM_DEBUG ${ORB_SLAM3_LIBS} depthai::core)
+
+# add_executable(RGBD_SLAM RGBD_OD.cpp)
+# target_link_libraries(RGBD_SLAM ${ORB_SLAM3_LIBS} depthai::core)
+
+add_executable(oakd_recorder oakd_recorder.cpp)
+target_link_libraries(oakd_recorder ${OpenCV_LIBS} depthai::core)
+
+add_executable(oakd_recorder_rgbd oakd_recorder_rgbd.cpp)
+target_link_libraries(oakd_recorder_rgbd ${OpenCV_LIBS} depthai::core)
