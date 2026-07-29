@@ -20,6 +20,7 @@
 // API and the same Sync/createOutputQueue pattern already proven elsewhere in this repo, but
 // should be treated as a first draft to build and fix against the real SDK, not working code.
 
+#include <cstdio>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -70,6 +71,11 @@ int main(int argc, char** argv) {
         return -1;
     }
     std::signal(SIGINT, SignalHandler);
+
+    if(!std::freopen("output.txt", "w", stdout)) {
+        std::cerr << "Failed to redirect stdout to output.txt" << std::endl;
+        return -1;
+    }
 
     constexpr float kCameraFps = 30.0f;
     constexpr uint32_t kWidth = 1280;
@@ -124,8 +130,8 @@ int main(int argc, char** argv) {
 
         double tframe = std::chrono::duration<double>(inRgb->getTimestamp().time_since_epoch()).count();
 
-        // TEMP DEBUG: capture-to-capture gap -- same diagnostic as IMUS_OD.cpp (expect ~33ms
-        // at 30fps; anything much larger is a stall).
+        // TEMP DEBUG: capture-to-capture gap -- same diagnostic as IMUS_OD.cpp (expect ~67ms
+        // at 15fps; anything much larger is a stall).
         double frameDeltaMs = (lastTframe >= 0.0) ? (tframe - lastTframe) * 1000.0 : 0.0;
         lastTframe = tframe;
 
@@ -134,7 +140,7 @@ int main(int argc, char** argv) {
                   << " frameDelta=" << frameDeltaMs << "ms" << std::endl;
 
         // TEMP DEBUG: wall-clock cost of TrackRGBD itself -- confirms/denies whether the RPi5
-        // is CPU-bound on tracking (expect well under 33ms/frame to keep up with 30fps).
+        // is CPU-bound on tracking (expect well under 67ms/frame to keep up with 15fps).
         auto trackStart = std::chrono::steady_clock::now();
         SLAM.TrackRGBD(inRgb->getCvFrame(), inDepth->getCvFrame(), tframe);
         auto trackEnd = std::chrono::steady_clock::now();
